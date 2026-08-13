@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from openlist_ani.adapters.outbound.configuration import config
-from openlist_ani.logger import logger
+from openlist_ani.logger import logger, read_recent_logs
 from .schema import (
     AddRSSRequest,
     AddRSSResponse,
@@ -90,6 +90,16 @@ async def ui_settings() -> dict:
         "openlist_url": config.openlist.url,
         "rename_format": config.openlist.rename_format,
         "poll_interval_seconds": config.rss.interval_time,
+    }
+
+
+@router.get("/ui/logs")
+async def ui_logs(limit: int = 300) -> dict[str, object]:
+    """Return a bounded tail of sanitized OpenList-Ani runtime logs."""
+    bounded_limit = max(1, min(limit, 1000))
+    return {
+        "lines": read_recent_logs(bounded_limit),
+        "limit": bounded_limit,
     }
 
 

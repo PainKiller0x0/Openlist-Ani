@@ -35,6 +35,17 @@ def test_sanitize_for_log_redacts_sensitive_urls_and_tokens():
     assert "send/<redacted>" in sanitized
 
 
+def test_read_recent_logs_returns_bounded_newest_lines(monkeypatch, tmp_path):
+    monkeypatch.setattr(logger_module, "LOG_DIR", tmp_path)
+    (tmp_path / "openlist_ani_2026-08-13.log").write_text("old\n", encoding="utf-8")
+    (tmp_path / "openlist_ani_2026-08-14.log").write_text(
+        "one\ntwo\nthree\n", encoding="utf-8"
+    )
+
+    assert logger_module.read_recent_logs(2) == ["two", "three"]
+    assert logger_module.read_recent_logs(1000) == ["old", "one", "two", "three"]
+
+
 def test_configure_logger_uses_clickable_source_location(monkeypatch, tmp_path):
     sink = StringIO()
     monkeypatch.setattr(logger_module, "LOG_DIR", tmp_path)
