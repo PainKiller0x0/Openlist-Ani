@@ -206,12 +206,14 @@ class AnimeLibraryIngestionPipeline:
         return stats
 
     async def _restore_task(self, task: TaskMemento) -> str:
-        if task.state in {
-            DownloadState.COMPLETED,
-            DownloadState.FAILED,
-            DownloadState.CANCELLED,
-        }:
+        if task.state in {DownloadState.COMPLETED, DownloadState.CANCELLED}:
             self.task_coordinator.delete(task.task_id)
+            return "skipped"
+
+        # Keep failed RSS tasks in the durable history so a later RSS scan
+        # cannot create the same permanently failing item again. Manual
+        # torrent submissions remain retryable because they have no source URL.
+        if task.state == DownloadState.FAILED:
             return "skipped"
 
         if self._download_retry_limit_reached(task):

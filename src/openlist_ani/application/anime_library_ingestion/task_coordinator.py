@@ -136,8 +136,9 @@ class TaskCoordinator:
     def is_downloading(self, release: AnimeRelease) -> bool:
         return any(
             task.release.download_url == release.download_url
-            and task.state not in self._TERMINAL_STATES
-            for task in self._tasks.values()
+            and task.state not in {DownloadState.COMPLETED, DownloadState.CANCELLED}
+            and (task.state != DownloadState.FAILED or release.source_url is not None)
+            for task in self.list_tasks()
         )
 
     def list_tasks(self) -> list[TaskMemento]:

@@ -327,6 +327,7 @@ async def ui_refresh_rss_metadata(request: AddRSSRequest) -> dict:
 
 
 @router.delete("/ui/rss")
+@router.post("/ui/rss/remove")
 async def ui_remove_rss(request: AddRSSRequest) -> dict:
     """Remove an RSS source and stop monitoring it immediately."""
     svc = BackendApiService.get()
