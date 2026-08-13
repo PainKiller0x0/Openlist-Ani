@@ -26,6 +26,23 @@ async def test_empty_urls_returns_empty():
     assert result == []
 
 
+def test_set_urls_updates_sources_and_deduplicates():
+    reader = ReleaseFeedReader(["https://old.example/rss"])
+
+    reader.set_urls(
+        [
+            "https://new.example/rss",
+            "https://new.example/rss",
+            "https://other.example/rss",
+        ]
+    )
+
+    assert reader._urls == [
+        "https://new.example/rss",
+        "https://other.example/rss",
+    ]
+
+
 async def test_entries_from_multiple_feeds_are_merged():
     reader = ReleaseFeedReader(["https://a.com/rss", "https://b.com/rss"])
     r1 = AnimeRelease(title="Anime A - 01", download_url="magnet:?a")

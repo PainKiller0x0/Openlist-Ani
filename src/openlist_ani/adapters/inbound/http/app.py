@@ -6,8 +6,10 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 from openlist_ani.logger import logger
+from .frontend import INDEX_HTML
 from .router import router
 
 
@@ -32,4 +34,10 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def index() -> str:
+        """Serve the user-facing RSS/torrent entry point."""
+        return INDEX_HTML
+
     return app

@@ -1,12 +1,16 @@
-"""
-FastAPI router defining all backend API endpoints.
-"""
+"""FastAPI router defining all backend API endpoints and the small web UI."""
 
 import os
+import re
 import signal
+import uuid
+from pathlib import Path
+from urllib.parse import unquote
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
+from openlist_ani.adapters.outbound.configuration import config
 from openlist_ani.logger import logger
 from .schema import (
     AddRSSRequest,
@@ -26,6 +30,99 @@ from .schema import (
 from .service import BackendApiService
 
 router = APIRouter(prefix="/api")
+UPLOAD_DIR = Path("data/uploads")
+TORRENT_NAME = re.compile(r"^[0-9a-f]{32}\.torrent$")
+MAX_TORRENT_BYTES = 50 * 1024 * 1024
+
+
+def _internal_backend_host() -> str:
+    host = config.backend.host.strip()
+    return "127.0.0.1" if host in {"", "0.0.0.0", "::"} else host
+
+
+@router.get("/ui/state")
+async def ui_state() -> dict:
+    """Return only the UI-safe runtime state needed by the built-in page."""
+    svc = BackendApiService.get()
+    return {
+        "rss_urls": list(config.rss.urls),
+        "download_path": config.openlist.download_path,
+        "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
+    }
+
+
+@router.post("/ui/rss")
+async def ui_add_rss(request: AddRSSRequest) -> dict:
+    """Validate, persist and activate a new RSS subscription."""
+    svc = BackendApiService.get()
+    parsed = await svc.parse_rss(request.url, limit=1)
+    if not parsed.success:
+        raise HTTPException(status_code=400, detail=parsed.message or "RSS 解析失败")
+
+    success, message, urls = svc.add_rss_url(request.url)
+    preview = parsed.entries[0].title if parsed.entries else ""
+    if success:
+        message = "RSS 已保存，追踪器已立即更新；新条目会按轮询周期自动下载。"
+    return {"success": success, "message": message, "urls": urls, "preview": preview}
+
+
+@router.get("/ui/uploads/{filename}", include_in_schema=False)
+async def serve_uploaded_torrent(filename: str) -> FileResponse:
+    """Serve an uploaded torrent to OpenList on the same machine."""
+    filename = unquote(filename)
+    if not TORRENT_NAME.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="Not found")
+    target = (UPLOAD_DIR / filename).resolve()
+    if target.parent != UPLOAD_DIR.resolve() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(target, media_type="application/x-bittorrent")
+
+
+@router.post("/ui/torrent")
+async def ui_upload_torrent(request: Request) -> dict:
+    """Upload a torrent, resolve its title, and start the OpenList task."""
+    content_length = int(request.headers.get("content-length", "0"))
+    if content_length <= 0 or content_length > MAX_TORRENT_BYTES:
+        raise HTTPException(status_code=400, detail="种子文件为空或超过 50 MB 限制")
+    if not request.headers.get("content-type", "").lower().startswith(
+        "application/x-bittorrent"
+    ):
+        raise HTTPException(status_code=400, detail="请上传 .torrent 文件")
+
+    filename = unquote(request.headers.get("x-filename", ""))
+    if not filename.lower().endswith(".torrent"):
+        raise HTTPException(status_code=400, detail="只支持 .torrent 文件")
+    blob = await request.body()
+    if len(blob) > MAX_TORRENT_BYTES:
+        raise HTTPException(status_code=400, detail="种子文件超过 50 MB 限制")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    stored = f"{uuid.uuid4().hex}.torrent"
+    target = UPLOAD_DIR / stored
+    target.write_bytes(blob)
+    internal_url = (
+        f"http://{_internal_backend_host()}:{config.backend.port}"
+        f"/api/ui/uploads/{stored}"
+    )
+
+    svc = BackendApiService.get()
+    try:
+        resolved = await svc.resolve_torrent(internal_url)
+        if not resolved.success:
+            raise HTTPException(status_code=400, detail=resolved.message or "种子解析失败")
+        title = unquote(request.headers.get("x-title", "")).strip()
+        title = title[:200] or (resolved.title or Path(filename).stem)[:200]
+        success, message, task = await svc.create_download(internal_url, title)
+        if not success:
+            raise HTTPException(status_code=409, detail=message)
+        return {
+            "success": True,
+            "message": f"已创建迅雷任务：{title}",
+            "task": task.model_dump(mode="json") if task else None,
+        }
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
 
 
 @router.post("/restart")

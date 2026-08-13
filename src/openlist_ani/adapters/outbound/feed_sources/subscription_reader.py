@@ -19,8 +19,12 @@ class ReleaseFeedReader:
         urls: list[str],
         factory: FeedSourceFactory | None = None,
     ) -> None:
-        self._urls = urls
+        self._urls = list(dict.fromkeys(urls))
         self._factory = factory or FeedSourceFactory()
+
+    def set_urls(self, urls: list[str]) -> None:
+        """Replace monitored URLs without restarting the backend process."""
+        self._urls = list(dict.fromkeys(urls))
 
     async def fetch_new_releases(self) -> list[AnimeRelease]:
         """Fetch releases from all configured feeds."""

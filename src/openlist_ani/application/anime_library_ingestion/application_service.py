@@ -89,6 +89,10 @@ class AnimeLibraryApplicationService:
 
         self._add_rss_url(url)
         updated_urls = self._get_rss_urls()
+        feed_reader = self._pipeline.feed_reader
+        set_urls = getattr(feed_reader, "set_urls", None)
+        if set_urls is not None:
+            set_urls(updated_urls)
         logger.info(f"Added RSS URL: {url}")
         return True, f"RSS URL added successfully: {url}", updated_urls
 
