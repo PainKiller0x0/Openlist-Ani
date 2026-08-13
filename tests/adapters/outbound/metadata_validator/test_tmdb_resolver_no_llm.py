@@ -99,7 +99,7 @@ async def test_tmdb_validation_pipeline_can_resolve_and_validate_without_llm():
     assert validated[0].success is True
     assert validated[0].result is not None
     assert validated[0].result.tmdb_id == 3822
-    assert validated[0].result.anime_name == "金牌得主"
+    assert validated[0].result.anime_name == "金牌得主 (2025)"
 
 
 async def test_heuristic_candidate_selector_prefers_authoritative_tmdb_name_for_alias():

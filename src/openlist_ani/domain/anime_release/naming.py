@@ -16,6 +16,18 @@ def sanitize_filename(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*]', " ", name).strip()
 
 
+def format_series_name(name: str | None, first_air_date: str | None = None) -> str:
+    """Return a safe series name with its TMDB first-air year."""
+    clean_name = sanitize_filename(name or "Unknown")
+    match = re.match(r"^(\d{4})(?:-\d{2}-\d{2})?$", (first_air_date or "").strip())
+    if not match:
+        return clean_name
+    year = match.group(1)
+    if re.search(r"[（(]\d{4}[）)]\s*$", clean_name):
+        return clean_name
+    return f"{clean_name} ({year})"
+
+
 def format_anime_episode(
     anime_name: str | None, season: int | None, episode: int | None
 ) -> str:

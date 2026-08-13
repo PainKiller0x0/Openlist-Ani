@@ -2,8 +2,15 @@ from openlist_ani.domain.anime_release import (
     AnimeRelease,
     DEFAULT_RENAME_FORMAT,
     ReleaseFilenamePlanner,
+    format_series_name,
     validate_rename_format,
 )
+
+
+def test_format_series_name_appends_tmdb_year_once():
+    assert format_series_name("幼女战记", "2017-01-06") == "幼女战记 (2017)"
+    assert format_series_name("幼女战记 (2017)", "2017-01-06") == "幼女战记 (2017)"
+    assert format_series_name("幼女战记", "") == "幼女战记"
 
 
 def test_default_rename_format_is_episode_focused():

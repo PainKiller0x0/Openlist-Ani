@@ -68,6 +68,7 @@ from openlist_ani.application.anime_library_ingestion.settings import (
 from openlist_ani.application.anime_library_ingestion.application_service import (
     AnimeLibraryApplicationService,
 )
+from openlist_ani.domain.anime_release import format_series_name
 from openlist_ani.integrations.openlist import OpenListClient, OpenListHealthCheck
 from openlist_ani.integrations.llm import LLMClientSettings, create_llm_client
 from openlist_ani.logger import FATAL_LEVEL, configure_logger, logger
@@ -362,7 +363,11 @@ async def _lookup_tmdb_show(client, name: str) -> dict[str, object] | None:
     poster_path = item.get("poster_path") or ""
     return {
         "id": item.get("id"),
-        "name": item.get("name") or item.get("original_name") or name,
+        "name": format_series_name(
+            item.get("name") or item.get("original_name") or name,
+            item.get("first_air_date"),
+        ),
+        "first_air_date": item.get("first_air_date"),
         "poster_url": (
             f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
         ),
@@ -377,7 +382,11 @@ async def _lookup_tmdb_show_by_id(client, tmdb_id: int) -> dict[str, object] | N
     poster_path = details.get("poster_path") or ""
     return {
         "id": tmdb_id,
-        "name": details.get("name") or details.get("original_name") or "",
+        "name": format_series_name(
+            details.get("name") or details.get("original_name") or "",
+            details.get("first_air_date"),
+        ),
+        "first_air_date": details.get("first_air_date"),
         "poster_url": (
             f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
         ),

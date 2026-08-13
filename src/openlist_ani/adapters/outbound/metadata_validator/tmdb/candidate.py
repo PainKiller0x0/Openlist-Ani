@@ -13,6 +13,7 @@ from openlist_ani.application.anime_library_ingestion.models import (
     TMDBMatch,
 )
 from openlist_ani.integrations.llm import LLMClient, parse_json_from_markdown
+from openlist_ani.domain.anime_release import format_series_name
 from openlist_ani.logger import logger
 
 from ..constants import MAX_TMDB_QUERIES
@@ -117,7 +118,11 @@ class HeuristicCandidateSelector:
         )
         return TMDBMatch(
             tmdb_id=selected.id,
-            anime_name=_select_authoritative_name(anime_name, selected),
+            anime_name=format_series_name(
+                _select_authoritative_name(anime_name, selected),
+                selected.first_air_date,
+            ),
+            first_air_date=selected.first_air_date,
             confidence="heuristic",
         )
 
@@ -170,7 +175,11 @@ class LLMCandidateSelector:
             selected = candidate_map[tmdb_id]
             return TMDBMatch(
                 tmdb_id=tmdb_id,
-                anime_name=_select_authoritative_name(anime_name, selected),
+                anime_name=format_series_name(
+                    _select_authoritative_name(anime_name, selected),
+                    selected.first_air_date,
+                ),
+                first_air_date=selected.first_air_date,
                 confidence=parsed.get("confidence", "unknown"),
             )
         except Exception as e:

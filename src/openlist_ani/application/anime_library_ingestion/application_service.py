@@ -22,7 +22,11 @@ from openlist_ani.application.anime_library_ingestion.exclusions import (
     filter_releases_by_title,
     normalize_exclude_patterns,
 )
-from openlist_ani.domain.anime_release import AnimeRelease, sanitize_filename
+from openlist_ani.domain.anime_release import (
+    AnimeRelease,
+    format_series_name,
+    sanitize_filename,
+)
 from openlist_ani.domain.anime_release import (
     validate_rename_format,
     ReleaseDirectoryPlanner,
@@ -190,6 +194,7 @@ class AnimeLibraryApplicationService:
 
         inferred_name = preferred_name.strip()
         tmdb_id: int | None = None
+        authoritative_name = ""
         for release, parsed_result in zip(entries, validated_results):
             if not inferred_name and release.anime_name:
                 inferred_name = release.anime_name.strip()
@@ -197,6 +202,7 @@ class AnimeLibraryApplicationService:
             if result is None:
                 continue
             inferred_name = inferred_name or result.anime_name.strip()
+            authoritative_name = result.anime_name.strip()
             tmdb_id = result.tmdb_id
             if result.anime_name.strip() and not preferred_name.strip():
                 inferred_name = result.anime_name.strip()
@@ -217,8 +223,14 @@ class AnimeLibraryApplicationService:
         if tmdb:
             tmdb_id = tmdb.get("id") or tmdb_id
             poster_url = tmdb.get("poster_url") or ""
+            inferred_name = format_series_name(
+                inferred_name or authoritative_name or str(tmdb.get("name") or ""),
+                str(tmdb.get("first_air_date") or ""),
+            )
         else:
             poster_url = ""
+            if not preferred_name.strip() and authoritative_name:
+                inferred_name = authoritative_name
 
         return {
             "name": inferred_name,
