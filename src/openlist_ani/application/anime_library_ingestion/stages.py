@@ -90,6 +90,14 @@ class RSSStage(PipelineStage[None]):
         self._settings = settings
         self._interval_seconds = interval_seconds
         self._task_reservation = task_reservation
+        self._scan_lock = asyncio.Lock()
+        self._scan_in_progress = False
+        self._last_scan_started_at: str | None = None
+        self._last_scan_finished_at: str | None = None
+        self._last_scan_status = "never"
+        self._last_scan_message = "尚未扫描"
+        self._last_scan_new_count = 0
+        self._next_scan_at: str | None = None
         self._metadata_cache: TTLCache[str, ParseResult] = TTLCache(
             maxsize=self._METADATA_CACHE_MAXSIZE,
             ttl=self._METADATA_CACHE_TTL,
@@ -100,7 +108,8 @@ class RSSStage(PipelineStage[None]):
 
     async def process_batch(self) -> None:
         try:
-            await self._scan_once()
+            async with self._scan_lock:
+                await self._run_scan()
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -108,18 +117,83 @@ class RSSStage(PipelineStage[None]):
 
         await self._sleep_until_next_scan()
 
-    async def _scan_once(self) -> None:
+    async def scan_now(self) -> dict[str, object]:
+        """Run one scan immediately, without waiting for the polling timer."""
+        if self._scan_lock.locked():
+            return self.status()
+        async with self._scan_lock:
+            await self._run_scan()
+        self._set_next_scan_at()
+        return self.status()
+
+    def status(self) -> dict[str, object]:
+        """Return UI-safe status for the automatic RSS scanner."""
+        return {
+            "enabled": True,
+            "running": self._scan_in_progress,
+            "status": self._last_scan_status,
+            "message": self._last_scan_message,
+            "last_scan_started_at": self._last_scan_started_at,
+            "last_scan_finished_at": self._last_scan_finished_at,
+            "last_scan_new_count": self._last_scan_new_count,
+            "next_scan_at": self._next_scan_at,
+            "interval_seconds": self._scan_interval_seconds(),
+        }
+
+    async def _run_scan(self) -> None:
+        self._scan_in_progress = True
+        self._last_scan_status = "running"
+        self._last_scan_message = "正在拉取 RSS 并检查新条目"
+        self._last_scan_started_at = datetime.now().astimezone().isoformat(
+            timespec="seconds"
+        )
+        try:
+            self._last_scan_new_count = await self._scan_once()
+            self._last_scan_status = "success"
+            self._last_scan_message = (
+                f"扫描完成，发现 {self._last_scan_new_count} 个新条目"
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self._last_scan_status = "error"
+            self._last_scan_message = f"扫描失败：{error}"
+            raise
+        finally:
+            self._scan_in_progress = False
+            self._last_scan_finished_at = datetime.now().astimezone().isoformat(
+                timespec="seconds"
+            )
+            self._set_next_scan_at()
+
+    def _scan_interval_seconds(self) -> float:
+        return float(
+            self._interval_seconds
+            if self._interval_seconds is not None
+            else self._settings.rss_interval_seconds
+        )
+
+    def _set_next_scan_at(self) -> None:
+        if self._last_scan_finished_at is None:
+            return
+        next_at = datetime.now().astimezone().timestamp() + self._scan_interval_seconds()
+        self._next_scan_at = datetime.fromtimestamp(next_at).astimezone().isoformat(
+            timespec="seconds"
+        )
+
+    async def _scan_once(self) -> int:
         rss_logger.info("RSS scan started")
         entries = self._deduplicate(await self._feed_reader.fetch_new_releases())
         processable, prefilter_summary = await self._filter_downloaded(entries)
         if not processable:
             self._log_scan_completed(0, prefilter_summary)
-            return
+            return 0
 
         self._log_scan_completed(len(processable), prefilter_summary)
         enriched = await self._parse_and_enrich(processable)
         accepted = await self._filter_candidates(enriched)
         await self._queue_download_candidates(accepted)
+        return len(accepted)
 
     async def _parse_and_enrich(
         self, entries: list[AnimeRelease]
@@ -172,11 +246,7 @@ class RSSStage(PipelineStage[None]):
             rss_logger.info(f"RSS scan completed: no new releases{scan_suffix}")
 
     async def _sleep_until_next_scan(self) -> None:
-        await asyncio.sleep(
-            self._interval_seconds
-            if self._interval_seconds is not None
-            else self._settings.rss_interval_seconds
-        )
+        await asyncio.sleep(self._scan_interval_seconds())
 
     async def _reserve_download_task(self, entry: AnimeRelease) -> TaskMemento | None:
         return await self._task_reservation.reserve_download_task(

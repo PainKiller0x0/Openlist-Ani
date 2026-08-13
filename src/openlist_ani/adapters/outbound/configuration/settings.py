@@ -15,6 +15,7 @@ from openlist_ani.integrations.openlist import normalize_offline_download_tool_n
 from openlist_ani.logger import FATAL_LEVEL, logger
 
 DEFAULT_TMDB_API_KEY = "8ed20a12d9f37dcf9484a505c8be696c"
+PLACEHOLDER_RSS_URL = "http://127.0.0.1:26667/empty.xml"
 
 
 class PriorityConfig(BaseModel):
@@ -320,6 +321,8 @@ class ConfigManager:
             content = self.config_path.read_bytes()
             raw = tomllib.loads(content.decode("utf-8"))
             self._config = UserConfig.model_validate(raw)
+            if self._remove_placeholder_rss(save=False):
+                self.save()
             self._load_failed = False
             self._set_proxy_env()
         except Exception as e:
@@ -348,9 +351,28 @@ class ConfigManager:
 
     def add_rss_url(self, url: str) -> None:
         """Add a new RSS URL to configuration."""
+        self._remove_placeholder_rss(save=False)
         if url not in self._config.rss.urls:
             self._config.rss.urls.append(url)
             self.save()
+
+    def remove_rss_url(self, url: str) -> bool:
+        """Remove an RSS URL from configuration."""
+        if url not in self._config.rss.urls:
+            return False
+        self._config.rss.urls.remove(url)
+        self.save()
+        return True
+
+    def _remove_placeholder_rss(self, *, save: bool) -> bool:
+        before = len(self._config.rss.urls)
+        self._config.rss.urls = [
+            url for url in self._config.rss.urls if url != PLACEHOLDER_RSS_URL
+        ]
+        changed = len(self._config.rss.urls) != before
+        if changed and save:
+            self.save()
+        return changed
 
     @property
     def rss(self) -> RSSConfig:

@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from openlist_ani.adapters.outbound.configuration import config
+from openlist_ani.adapters.outbound.configuration.settings import PLACEHOLDER_RSS_URL
 from openlist_ani.logger import logger
 from .schema import (
     AddRSSRequest,
@@ -45,10 +46,20 @@ async def ui_state() -> dict:
     """Return only the UI-safe runtime state needed by the built-in page."""
     svc = BackendApiService.get()
     return {
-        "rss_urls": list(config.rss.urls),
+        "rss_urls": [
+            url for url in config.rss.urls if url != PLACEHOLDER_RSS_URL
+        ],
         "download_path": config.openlist.download_path,
+        "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
     }
+
+
+@router.post("/ui/scan")
+async def ui_scan_now() -> dict[str, object]:
+    """Run the RSS scanner immediately instead of waiting for its timer."""
+    svc = BackendApiService.get()
+    return await svc.scan_rss_now()
 
 
 @router.post("/ui/rss")
@@ -64,6 +75,16 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
     if success:
         message = "RSS 已保存，追踪器已立即更新；新条目会按轮询周期自动下载。"
     return {"success": success, "message": message, "urls": urls, "preview": preview}
+
+
+@router.delete("/ui/rss")
+async def ui_remove_rss(request: AddRSSRequest) -> dict:
+    """Remove an RSS source and stop monitoring it immediately."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.remove_rss_url(request.url)
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {"success": True, "message": message, "urls": urls}
 
 
 @router.get("/ui/uploads/{filename}", include_in_schema=False)

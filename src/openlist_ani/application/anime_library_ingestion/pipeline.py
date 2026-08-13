@@ -129,6 +129,29 @@ class AnimeLibraryIngestionPipeline:
         self.task_coordinator.atomic_flush()
         pipeline_logger.info("Anime library ingestion pipeline stopped")
 
+    async def scan_rss_now(self) -> dict[str, object]:
+        """Trigger the RSS stage immediately for the HTTP UI."""
+        stage = self._rss_stage()
+        if stage is None:
+            raise RuntimeError("RSS stage is not enabled")
+        return await stage.scan_now()
+
+    def rss_status(self) -> dict[str, object]:
+        """Return RSS stage status for the HTTP UI."""
+        stage = self._rss_stage()
+        return stage.status() if stage is not None else {
+            "enabled": False,
+            "running": False,
+            "status": "disabled",
+            "message": "RSS stage is not enabled",
+        }
+
+    def _rss_stage(self) -> RSSStage | None:
+        return next(
+            (stage for stage in self._stages if isinstance(stage, RSSStage)),
+            None,
+        )
+
     async def restore(self) -> dict[str, int]:
         stats = {
             "download": 0,

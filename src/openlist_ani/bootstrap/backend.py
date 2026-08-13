@@ -137,6 +137,7 @@ async def run() -> None:
             resolve_torrent_func=resolve_torrent,
             get_rss_urls=lambda: list(config.rss.urls),
             add_rss_url_func=config.add_rss_url,
+            remove_rss_url_func=config.remove_rss_url,
         )
     )
 

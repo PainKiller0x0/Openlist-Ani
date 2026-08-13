@@ -93,6 +93,15 @@ class BackendApiService:
     def add_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.add_rss_url(url)
 
+    def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
+        return self._application_service.remove_rss_url(url)
+
+    async def scan_rss_now(self) -> dict[str, object]:
+        return await self._application_service.scan_rss_now()
+
+    def rss_status(self) -> dict[str, object]:
+        return self._application_service.rss_status()
+
     async def create_download(
         self,
         download_url: str,

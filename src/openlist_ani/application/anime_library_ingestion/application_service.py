@@ -66,6 +66,7 @@ class AnimeLibraryApplicationService:
         resolve_torrent_func: ResolveTorrent,
         get_rss_urls: Callable[[], list[str]],
         add_rss_url_func: Callable[[str], None],
+        remove_rss_url_func: Callable[[str], bool],
     ) -> None:
         self._pipeline = pipeline
         self._metadata_parser = metadata_parser
@@ -77,6 +78,7 @@ class AnimeLibraryApplicationService:
         self._resolve_torrent = resolve_torrent_func
         self._get_rss_urls = get_rss_urls
         self._add_rss_url = add_rss_url_func
+        self._remove_rss_url = remove_rss_url_func
 
     @property
     def pipeline(self) -> AnimeLibraryIngestionPipeline:
@@ -132,6 +134,24 @@ class AnimeLibraryApplicationService:
 
     def get_download(self, task_id: str) -> TaskMemento | None:
         return self._pipeline.task_coordinator.get_task(task_id)
+
+    async def scan_rss_now(self) -> dict[str, object]:
+        return await self._pipeline.scan_rss_now()
+
+    def rss_status(self) -> dict[str, object]:
+        return self._pipeline.rss_status()
+
+    def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
+        current_urls = self._get_rss_urls()
+        if url not in current_urls:
+            return False, f"RSS URL not found: {url}", current_urls
+        self._remove_rss_url(url)
+        updated_urls = self._get_rss_urls()
+        feed_reader = self._pipeline.feed_reader
+        set_urls = getattr(feed_reader, "set_urls", None)
+        if set_urls is not None:
+            set_urls(updated_urls)
+        return True, f"RSS URL removed: {url}", updated_urls
 
     async def parse_rss(
         self,

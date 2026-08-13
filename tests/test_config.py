@@ -202,6 +202,29 @@ class TestUserConfig:
 
 
 class TestConfigManager:
+    def test_placeholder_rss_is_removed_when_real_feed_is_added(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[rss]\nurls = ["http://127.0.0.1:26667/empty.xml"]\n',
+            encoding="utf-8",
+        )
+
+        mgr = ConfigManager(str(config_path))
+        mgr.add_rss_url("https://example.com/anime.xml")
+
+        assert mgr.rss.urls == ["https://example.com/anime.xml"]
+
+    def test_remove_rss_url_persists_change(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[rss]\nurls = ["https://example.com/anime.xml"]\n',
+            encoding="utf-8",
+        )
+
+        mgr = ConfigManager(str(config_path))
+        assert mgr.remove_rss_url("https://example.com/anime.xml") is True
+        assert ConfigManager(str(config_path)).rss.urls == []
+
     def test_package_import_has_no_file_side_effect(self, tmp_path):
         """Importing configuration symbols should not create config.toml."""
         script = "\n".join(
