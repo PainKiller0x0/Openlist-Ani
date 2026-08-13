@@ -36,8 +36,18 @@ def create_app() -> FastAPI:
     app.include_router(router)
 
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    async def index() -> str:
+    async def index() -> HTMLResponse:
         """Serve the user-facing RSS/torrent entry point."""
-        return INDEX_HTML
+        # The page is embedded in the service and changes whenever the backend
+        # is upgraded.  Prevent browsers and reverse proxies from keeping an
+        # older UI after a deployment.
+        return HTMLResponse(
+            content=INDEX_HTML,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
 
     return app
