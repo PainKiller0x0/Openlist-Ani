@@ -23,6 +23,7 @@ from openlist_ani.adapters.outbound.configuration import (
     OpenListConfig,
     ProxyConfig,
     RSSConfig,
+    RSSSubscription,
     FeishuAssistantConfig,
     WechatAssistantConfig,
     UserConfig,
@@ -46,6 +47,20 @@ class TestRSSConfig:
         )
         assert len(cfg.urls) == 2
         assert cfg.interval_time == 60
+
+    def test_legacy_urls_create_named_subscription_records(self):
+        cfg = RSSConfig(urls=["https://feed.example/rss"])
+        assert cfg.subscriptions[0].url == "https://feed.example/rss"
+        assert cfg.subscriptions[0].enabled is True
+
+    def test_paused_subscription_is_kept_but_not_polled(self):
+        cfg = RSSConfig(
+            subscriptions=[
+                RSSSubscription(url="https://feed.example/rss", enabled=False)
+            ]
+        )
+        assert cfg.urls == []
+        assert cfg.subscriptions[0].enabled is False
 
 
 class TestOpenListConfig:
@@ -310,6 +325,18 @@ class TestConfigManager:
         # Adding duplicate should not add twice
         mgr.add_rss_url("http://new.rss")
         assert mgr.rss.urls.count("http://new.rss") == 1
+
+    def test_pause_and_resume_rss_subscription(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mgr = ConfigManager("config.toml")
+        mgr.add_rss_url("http://new.rss", name="测试番剧", tmdb_id=123)
+
+        assert mgr.update_rss_subscription("http://new.rss", enabled=False) is True
+        assert mgr.rss.urls == []
+        assert mgr.rss.subscriptions[0].name == "测试番剧"
+
+        assert mgr.update_rss_subscription("http://new.rss", enabled=True) is True
+        assert mgr.rss.urls == ["http://new.rss"]
 
     def test_properties(self, tmp_path, monkeypatch):
         """All config properties should be accessible without error."""

@@ -93,6 +93,39 @@ class BackendApiService:
     def add_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.add_rss_url(url)
 
+    async def resolve_rss_subscription(
+        self, url: str, preferred_name: str = ""
+    ) -> dict[str, object]:
+        return await self._application_service.resolve_rss_subscription(
+            url, preferred_name
+        )
+
+    def add_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+    ) -> tuple[bool, str, list[str]]:
+        return self._application_service.add_rss_url(
+            url, name=name, tmdb_id=tmdb_id, poster_url=poster_url
+        )
+
+    def list_rss_subscriptions(self) -> list[dict[str, object]]:
+        return self._application_service.list_rss_subscriptions()
+
+    def update_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str | None = None,
+        enabled: bool | None = None,
+    ) -> tuple[bool, str, list[str]]:
+        return self._application_service.update_rss_subscription(
+            url, name=name, enabled=enabled
+        )
+
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.remove_rss_url(url)
 

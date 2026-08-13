@@ -11,7 +11,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from openlist_ani.adapters.outbound.configuration import config
-from openlist_ani.adapters.outbound.configuration.settings import PLACEHOLDER_RSS_URL
 from openlist_ani.logger import logger
 from .schema import (
     AddRSSRequest,
@@ -27,6 +26,7 @@ from .schema import (
     ResolveTorrentRequest,
     ResolveTorrentResponse,
     RestartResponse,
+    ToggleRSSRequest,
 )
 from .service import BackendApiService
 
@@ -45,10 +45,18 @@ def _internal_backend_host() -> str:
 async def ui_state() -> dict:
     """Return only the UI-safe runtime state needed by the built-in page."""
     svc = BackendApiService.get()
+    subscriptions = [
+        item
+        for item in svc.list_rss_subscriptions()
+        if str(item.get("url", ""))
+    ]
     return {
         "rss_urls": [
-            url for url in config.rss.urls if url != PLACEHOLDER_RSS_URL
+            str(item["url"])
+            for item in subscriptions
+            if item.get("enabled", True)
         ],
+        "rss_subscriptions": subscriptions,
         "download_path": config.openlist.download_path,
         "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
@@ -70,11 +78,37 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
     if not parsed.success:
         raise HTTPException(status_code=400, detail=parsed.message or "RSS 解析失败")
 
-    success, message, urls = svc.add_rss_url(request.url)
+    metadata = await svc.resolve_rss_subscription(request.url, request.name)
+    success, message, urls = svc.add_rss_subscription(
+        request.url,
+        name=str(metadata.get("name", "") or request.name).strip(),
+        tmdb_id=metadata.get("tmdb_id"),
+        poster_url=str(metadata.get("poster_url", "") or ""),
+    )
     preview = parsed.entries[0].title if parsed.entries else ""
     if success:
         message = "RSS 已保存，追踪器已立即更新；新条目会按轮询周期自动下载。"
-    return {"success": success, "message": message, "urls": urls, "preview": preview}
+    return {
+        "success": success,
+        "message": message,
+        "urls": urls,
+        "preview": preview,
+        "name": metadata.get("name", "") or request.name.strip(),
+        "tmdb_id": metadata.get("tmdb_id"),
+        "poster_url": metadata.get("poster_url", ""),
+    }
+
+
+@router.post("/ui/rss/toggle")
+async def ui_toggle_rss(request: ToggleRSSRequest) -> dict:
+    """Pause or resume a persisted RSS subscription without deleting it."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.update_rss_subscription(
+        request.url, enabled=request.enabled
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {"success": True, "message": message, "urls": urls}
 
 
 @router.delete("/ui/rss")
@@ -160,7 +194,7 @@ async def restart_service() -> RestartResponse:
 async def add_rss_url(request: AddRSSRequest) -> AddRSSResponse:
     """Add a new RSS monitoring URL."""
     svc = BackendApiService.get()
-    success, message, urls = svc.add_rss_url(request.url)
+    success, message, urls = svc.add_rss_url(request.url, name=request.name)
     return AddRSSResponse(success=success, message=message, urls=urls)
 
 

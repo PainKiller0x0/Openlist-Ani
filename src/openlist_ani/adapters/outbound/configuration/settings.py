@@ -60,14 +60,37 @@ class MetadataFilterConfig(BaseModel):
     )  # Regex patterns to exclude RSS entries by title
 
 
+class RSSSubscription(BaseModel):
+    """Persisted metadata for one RSS subscription."""
+
+    url: str
+    name: str = ""
+    enabled: bool = True
+    tmdb_id: int | None = None
+    poster_url: str = ""
+
+
 class RSSConfig(BaseModel):
     urls: list[str] = Field(default_factory=list)
+    subscriptions: list[RSSSubscription] = Field(default_factory=list)
     interval_time: int = 300  # RSS fetch interval in seconds (default: 5 minutes)
     strict: bool = (
         False  # Strict mode: filter entries whose rename stem matches existing downloads
     )
     filter: MetadataFilterConfig = MetadataFilterConfig()
     priority: PriorityConfig = PriorityConfig()
+
+    @model_validator(mode="after")
+    def _synchronise_urls_and_subscriptions(self) -> "RSSConfig":
+        """Migrate legacy ``urls`` and keep active URLs runtime-compatible."""
+        by_url = {item.url: item for item in self.subscriptions if item.url.strip()}
+        for url in self.urls:
+            if url.strip() and url not in by_url:
+                by_url[url] = RSSSubscription(url=url)
+
+        self.subscriptions = list(by_url.values())
+        self.urls = [item.url for item in self.subscriptions if item.enabled]
+        return self
 
 
 class OpenListConfig(BaseModel):
@@ -341,7 +364,9 @@ class ConfigManager:
     def save(self) -> None:
         """Save current configuration to file."""
         try:
-            payload = self._config.model_dump()
+            # TOML has no null literal.  Optional subscription metadata such as
+            # an unresolved TMDB id must be omitted until it is available.
+            payload = self._config.model_dump(exclude_none=True)
             self.config_path.write_text(toml_dumps(payload), encoding="utf-8")
         except Exception as e:
             logger.error(
@@ -349,27 +374,96 @@ class ConfigManager:
                 "Runtime changes may not persist after restart."
             )
 
-    def add_rss_url(self, url: str) -> None:
-        """Add a new RSS URL to configuration."""
+    def add_rss_url(
+        self,
+        url: str,
+        *,
+        name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+    ) -> None:
+        """Add or reactivate an RSS subscription."""
         self._remove_placeholder_rss(save=False)
-        if url not in self._config.rss.urls:
-            self._config.rss.urls.append(url)
-            self.save()
+        existing = next(
+            (item for item in self._config.rss.subscriptions if item.url == url), None
+        )
+        if existing is None:
+            self._config.rss.subscriptions.append(
+                RSSSubscription(
+                    url=url,
+                    name=name.strip(),
+                    tmdb_id=tmdb_id,
+                    poster_url=poster_url.strip(),
+                )
+            )
+        else:
+            existing.enabled = True
+            if name.strip():
+                existing.name = name.strip()
+            if tmdb_id is not None:
+                existing.tmdb_id = tmdb_id
+            if poster_url.strip():
+                existing.poster_url = poster_url.strip()
+        self._sync_active_rss_urls()
+        self.save()
 
-    def remove_rss_url(self, url: str) -> bool:
-        """Remove an RSS URL from configuration."""
-        if url not in self._config.rss.urls:
+    def update_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str | None = None,
+        enabled: bool | None = None,
+        tmdb_id: int | None = None,
+        poster_url: str | None = None,
+    ) -> bool:
+        """Update display metadata or pause/resume a subscription."""
+        item = next(
+            (item for item in self._config.rss.subscriptions if item.url == url), None
+        )
+        if item is None:
             return False
-        self._config.rss.urls.remove(url)
+        if name is not None and name.strip():
+            item.name = name.strip()
+        if enabled is not None:
+            item.enabled = enabled
+        if tmdb_id is not None:
+            item.tmdb_id = tmdb_id
+        if poster_url is not None:
+            item.poster_url = poster_url.strip()
+        self._sync_active_rss_urls()
         self.save()
         return True
 
-    def _remove_placeholder_rss(self, *, save: bool) -> bool:
-        before = len(self._config.rss.urls)
-        self._config.rss.urls = [
-            url for url in self._config.rss.urls if url != PLACEHOLDER_RSS_URL
+    def remove_rss_url(self, url: str) -> bool:
+        """Remove an RSS URL from configuration."""
+        before = len(self._config.rss.subscriptions)
+        self._config.rss.subscriptions = [
+            item for item in self._config.rss.subscriptions if item.url != url
         ]
-        changed = len(self._config.rss.urls) != before
+        if len(self._config.rss.subscriptions) == before:
+            return False
+        self._sync_active_rss_urls()
+        self.save()
+        return True
+
+    def _sync_active_rss_urls(self) -> None:
+        self._config.rss.urls = [
+            item.url for item in self._config.rss.subscriptions if item.enabled
+        ]
+
+    def _remove_placeholder_rss(self, *, save: bool) -> bool:
+        before = len(self._config.rss.subscriptions)
+        self._config.rss.subscriptions = [
+            item
+            for item in self._config.rss.subscriptions
+            if item.url != PLACEHOLDER_RSS_URL
+        ]
+        self._config.rss.urls = [
+            item.url
+            for item in self._config.rss.subscriptions
+            if item.enabled
+        ]
+        changed = len(self._config.rss.subscriptions) != before
         if changed and save:
             self.save()
         return changed

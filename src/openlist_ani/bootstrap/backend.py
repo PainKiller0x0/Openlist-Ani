@@ -42,6 +42,7 @@ from openlist_ani.adapters.outbound.metadata_validator import (
 from openlist_ani.adapters.outbound.metadata_validator.tmdb import (
     create_tmdb_metadata_validator,
 )
+from openlist_ani.adapters.outbound.metadata_validator.tmdb.api import get_tmdb_client
 from openlist_ani.adapters.outbound.notifications import (
     NotificationManager,
     NotificationManagerFactory,
@@ -110,6 +111,10 @@ async def run() -> None:
     settings = _create_pipeline_settings()
     metadata_parser = _create_metadata_parser()
     metadata_validator = _create_metadata_validator()
+    tmdb_client = get_tmdb_client(
+        api_key=config.llm.tmdb_api_key,
+        language=config.llm.tmdb_language,
+    )
     downloader = _create_downloader(openlist_client)
     file_renamer = _create_file_renamer(openlist_client)
     pipeline = AnimeLibraryIngestionPipeline(
@@ -138,6 +143,11 @@ async def run() -> None:
             get_rss_urls=lambda: list(config.rss.urls),
             add_rss_url_func=config.add_rss_url,
             remove_rss_url_func=config.remove_rss_url,
+            get_rss_subscriptions=lambda: [
+                item.model_dump(mode="json") for item in config.rss.subscriptions
+            ],
+            update_rss_subscription_func=config.update_rss_subscription,
+            lookup_tmdb_show=lambda name: _lookup_tmdb_show(tmdb_client, name),
         )
     )
 
@@ -279,6 +289,24 @@ def _create_validator_llm_client():
             model=config.llm.openai_model,
         )
     )
+
+
+async def _lookup_tmdb_show(client, name: str) -> dict[str, object] | None:
+    """Return a conservative TV result and poster URL for subscription cards."""
+    results = await client.search_tv_show(name)
+    if not results:
+        return None
+    animation = [item for item in results if 16 in (item.get("genre_ids") or [])]
+    candidates = animation or results
+    item = candidates[0]
+    poster_path = item.get("poster_path") or ""
+    return {
+        "id": item.get("id"),
+        "name": item.get("name") or item.get("original_name") or name,
+        "poster_url": (
+            f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
+        ),
+    }
 
 
 async def _setup_notifications() -> NotificationManager | None:

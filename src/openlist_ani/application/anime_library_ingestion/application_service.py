@@ -34,6 +34,7 @@ class ReleaseFeedSourceFactoryPort(Protocol):
 
 ResolveMagnet = Callable[..., Awaitable[Any]]
 ResolveTorrent = Callable[..., Awaitable[Any]]
+LookupTMDBShow = Callable[[str], Awaitable[dict[str, Any] | None]]
 
 
 @dataclass(frozen=True)
@@ -65,8 +66,11 @@ class AnimeLibraryApplicationService:
         resolve_magnet_func: ResolveMagnet,
         resolve_torrent_func: ResolveTorrent,
         get_rss_urls: Callable[[], list[str]],
-        add_rss_url_func: Callable[[str], None],
+        add_rss_url_func: Callable[..., None],
         remove_rss_url_func: Callable[[str], bool],
+        get_rss_subscriptions: Callable[[], list[dict[str, Any]]] | None = None,
+        update_rss_subscription_func: Callable[..., bool] | None = None,
+        lookup_tmdb_show: LookupTMDBShow | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._metadata_parser = metadata_parser
@@ -77,19 +81,43 @@ class AnimeLibraryApplicationService:
         self._resolve_magnet = resolve_magnet_func
         self._resolve_torrent = resolve_torrent_func
         self._get_rss_urls = get_rss_urls
+        self._get_rss_subscriptions = get_rss_subscriptions or (
+            lambda: [{"url": url, "name": "", "enabled": True} for url in get_rss_urls()]
+        )
         self._add_rss_url = add_rss_url_func
         self._remove_rss_url = remove_rss_url_func
+        self._update_rss_subscription = update_rss_subscription_func or (
+            lambda _url, **_kwargs: False
+        )
+        self._lookup_tmdb_show = lookup_tmdb_show
 
     @property
     def pipeline(self) -> AnimeLibraryIngestionPipeline:
         return self._pipeline
 
-    def add_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
+    def add_rss_url(
+        self,
+        url: str,
+        *,
+        name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+    ) -> tuple[bool, str, list[str]]:
         current_urls = self._get_rss_urls()
         if url in current_urls:
             return False, f"URL already exists: {url}", current_urls
 
-        self._add_rss_url(url)
+        try:
+            self._add_rss_url(
+                url,
+                name=name,
+                tmdb_id=tmdb_id,
+                poster_url=poster_url,
+            )
+        except TypeError:
+            # Keep old adapters and test doubles working while the richer
+            # subscription metadata API rolls out.
+            self._add_rss_url(url)
         updated_urls = self._get_rss_urls()
         feed_reader = self._pipeline.feed_reader
         set_urls = getattr(feed_reader, "set_urls", None)
@@ -97,6 +125,72 @@ class AnimeLibraryApplicationService:
             set_urls(updated_urls)
         logger.info(f"Added RSS URL: {url}")
         return True, f"RSS URL added successfully: {url}", updated_urls
+
+    def list_rss_subscriptions(self) -> list[dict[str, Any]]:
+        return self._get_rss_subscriptions()
+
+    async def resolve_rss_subscription(
+        self, url: str, preferred_name: str = ""
+    ) -> dict[str, Any]:
+        """Infer a display name and optional TMDB poster from the feed."""
+        parsed = await self.parse_rss(url, limit=5)
+        if not parsed.success:
+            return {"name": preferred_name.strip(), "error": parsed.message}
+
+        inferred_name = preferred_name.strip()
+        tmdb_id: int | None = None
+        for release in parsed.entries or []:
+            if not inferred_name and release.anime_name:
+                inferred_name = release.anime_name.strip()
+            try:
+                parse_results = await self._metadata_parser.parse([release])
+                validated = await self._metadata_validator.validate(parse_results)
+                parsed_result = validated[0] if validated else None
+                result = parsed_result.result if parsed_result else None
+                if parsed_result and parsed_result.success and result is not None:
+                    inferred_name = inferred_name or result.anime_name.strip()
+                    tmdb_id = result.tmdb_id
+                    if result.anime_name.strip() and not preferred_name.strip():
+                        inferred_name = result.anime_name.strip()
+                    if tmdb_id is not None:
+                        break
+            except Exception as e:
+                logger.debug(f"Subscription metadata inference failed: {e}")
+
+        tmdb = None
+        if self._lookup_tmdb_show and inferred_name:
+            try:
+                tmdb = await self._lookup_tmdb_show(inferred_name)
+            except Exception as e:
+                logger.debug(f"TMDB poster lookup failed for {inferred_name}: {e}")
+        if tmdb:
+            tmdb_id = tmdb.get("id") or tmdb_id
+            poster_url = tmdb.get("poster_url") or ""
+        else:
+            poster_url = ""
+
+        return {
+            "name": inferred_name,
+            "tmdb_id": tmdb_id,
+            "poster_url": poster_url,
+        }
+
+    def update_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str | None = None,
+        enabled: bool | None = None,
+    ) -> tuple[bool, str, list[str]]:
+        if not self._update_rss_subscription(url, name=name, enabled=enabled):
+            return False, f"RSS URL not found: {url}", self._get_rss_urls()
+        updated_urls = self._get_rss_urls()
+        feed_reader = self._pipeline.feed_reader
+        set_urls = getattr(feed_reader, "set_urls", None)
+        if set_urls is not None:
+            set_urls(updated_urls)
+        state = "resumed" if enabled else "paused" if enabled is False else "updated"
+        return True, f"RSS subscription {state}: {url}", updated_urls
 
     async def create_download(
         self,
@@ -143,9 +237,14 @@ class AnimeLibraryApplicationService:
 
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         current_urls = self._get_rss_urls()
-        if url not in current_urls:
+        known_subscriptions = self._get_rss_subscriptions()
+        known = url in current_urls or any(
+            str(item.get("url", "")) == url for item in known_subscriptions
+        )
+        if not known:
             return False, f"RSS URL not found: {url}", current_urls
-        self._remove_rss_url(url)
+        if not self._remove_rss_url(url):
+            return False, f"RSS URL not found: {url}", current_urls
         updated_urls = self._get_rss_urls()
         feed_reader = self._pipeline.feed_reader
         set_urls = getattr(feed_reader, "set_urls", None)

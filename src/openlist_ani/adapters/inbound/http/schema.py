@@ -9,6 +9,22 @@ class AddRSSRequest(BaseModel):
     """Request body for adding an RSS monitoring URL."""
 
     url: str = Field(..., description="RSS feed URL to monitor")
+    name: str = Field(default="", max_length=200, description="Optional anime display name")
+
+
+class ToggleRSSRequest(BaseModel):
+    """Request body for pausing or resuming an RSS subscription."""
+
+    url: str = Field(..., description="RSS feed URL")
+    enabled: bool = Field(..., description="Whether the subscription should keep polling")
+
+
+class RSSSubscriptionResponse(BaseModel):
+    url: str
+    name: str = ""
+    enabled: bool = True
+    tmdb_id: int | None = None
+    poster_url: str = ""
 
 
 class AddRSSResponse(BaseModel):
