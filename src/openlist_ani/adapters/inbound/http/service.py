@@ -123,6 +123,7 @@ class BackendApiService:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         return self._application_service.add_rss_url(
@@ -130,6 +131,7 @@ class BackendApiService:
             name=name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            season=season,
             exclude_patterns=exclude_patterns,
         )
 
@@ -144,6 +146,7 @@ class BackendApiService:
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         return self._application_service.update_rss_subscription(
@@ -152,6 +155,7 @@ class BackendApiService:
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            season=season,
             exclude_patterns=exclude_patterns,
         )
 
@@ -163,6 +167,7 @@ class BackendApiService:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        season: int | None = None,
         exclude_patterns: str | list[str] = "",
     ) -> tuple[bool, str, list[str]]:
         return self._application_service.correct_rss_subscription(
@@ -171,6 +176,7 @@ class BackendApiService:
             name=name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            season=season,
             exclude_patterns=normalize_exclude_patterns(exclude_patterns),
         )
 
@@ -215,6 +221,9 @@ class BackendApiService:
             download_path=download_path,
             rename_format=rename_format,
         )
+
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        self._application_service.update_runtime_rss_interval(interval_seconds)
 
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.remove_rss_url(url)

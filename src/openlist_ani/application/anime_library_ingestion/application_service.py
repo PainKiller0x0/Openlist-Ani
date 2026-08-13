@@ -22,7 +22,7 @@ from openlist_ani.application.anime_library_ingestion.exclusions import (
     filter_releases_by_title,
     normalize_exclude_patterns,
 )
-from openlist_ani.domain.anime_release import AnimeRelease
+from openlist_ani.domain.anime_release import AnimeRelease, sanitize_filename
 from openlist_ani.domain.anime_release import (
     validate_rename_format,
     ReleaseDirectoryPlanner,
@@ -123,6 +123,7 @@ class AnimeLibraryApplicationService:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         current_urls = self._get_rss_urls()
@@ -135,6 +136,7 @@ class AnimeLibraryApplicationService:
                 name=name,
                 tmdb_id=tmdb_id,
                 poster_url=poster_url,
+                season=season,
                 exclude_patterns=exclude_patterns,
             )
         except TypeError:
@@ -147,7 +149,16 @@ class AnimeLibraryApplicationService:
         return True, f"RSS URL added successfully: {url}", updated_urls
 
     def list_rss_subscriptions(self) -> list[dict[str, Any]]:
-        return self._get_rss_subscriptions()
+        subscriptions: list[dict[str, Any]] = []
+        for item in self._get_rss_subscriptions():
+            enriched = dict(item)
+            name = sanitize_filename(str(enriched.get("name", "") or "未命名订阅"))
+            season = int(enriched.get("season") or 1)
+            enriched["download_directory"] = (
+                f"{self._settings.download_path.rstrip('/')}/{name}/Season {season}"
+            )
+            subscriptions.append(enriched)
+        return subscriptions
 
     async def resolve_rss_subscription(
         self,
@@ -249,6 +260,7 @@ class AnimeLibraryApplicationService:
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         if not self._update_rss_subscription(
@@ -257,6 +269,7 @@ class AnimeLibraryApplicationService:
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            season=season,
             exclude_patterns=exclude_patterns,
         ):
             return False, f"RSS URL not found: {url}", self._get_rss_urls()
@@ -273,6 +286,7 @@ class AnimeLibraryApplicationService:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         """Update a subscription in place, or replace it with a new URL."""
@@ -298,6 +312,7 @@ class AnimeLibraryApplicationService:
                 name=name,
                 tmdb_id=tmdb_id,
                 poster_url=effective_poster_url,
+                season=season,
                 exclude_patterns=normalized,
             )
             return success, "RSS 已修正并保存" if success else message, urls
@@ -311,6 +326,7 @@ class AnimeLibraryApplicationService:
             name=name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            season=season,
             exclude_patterns=normalized,
         )
         if not added:
@@ -360,6 +376,9 @@ class AnimeLibraryApplicationService:
             download_path=download_path,
             rename_format=rename_format,
         )
+
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        self._pipeline.update_runtime_rss_interval(interval_seconds)
 
     def _sync_feed_reader(self, updated_urls: list[str] | None = None) -> None:
         """Refresh active URLs and per-RSS filters on the live reader."""

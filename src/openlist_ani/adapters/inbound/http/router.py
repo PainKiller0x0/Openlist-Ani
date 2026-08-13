@@ -66,6 +66,7 @@ async def ui_state() -> dict:
         "rss_subscriptions": subscriptions,
         "global_exclude_patterns": svc.global_exclude_patterns(),
         "download_path": config.openlist.download_path,
+        "poll_interval_seconds": config.rss.interval_time,
         "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
     }
@@ -86,6 +87,7 @@ async def ui_settings() -> dict:
         },
         "download_path": config.openlist.download_path,
         "rename_format": config.openlist.rename_format,
+        "poll_interval_seconds": config.rss.interval_time,
     }
 
 
@@ -104,6 +106,11 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
         if request.rename_format is not None
         else config.openlist.rename_format
     )
+    requested_interval = (
+        request.poll_interval_seconds
+        if request.poll_interval_seconds is not None
+        else config.rss.interval_time
+    )
     format_ok, format_error = svc.validate_rename_format(requested_format)
     if not format_ok:
         raise HTTPException(status_code=400, detail=format_error)
@@ -118,6 +125,9 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
             download_path=requested_path,
             rename_format=requested_format,
         )
+    if request.poll_interval_seconds is not None:
+        config.update_rss_settings(interval_time=requested_interval)
+        svc.update_runtime_rss_interval(requested_interval)
         svc.update_runtime_openlist_settings(
             download_path=requested_path,
             rename_format=requested_format,
@@ -161,6 +171,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         name=str(metadata.get("name", "") or request.name).strip(),
         tmdb_id=metadata.get("tmdb_id"),
         poster_url=str(metadata.get("poster_url", "") or ""),
+        season=request.season or 1,
         exclude_patterns=normalize_exclude_patterns(request.exclude_patterns),
     )
     preview = parsed.entries[0].title if parsed.entries else ""
@@ -241,6 +252,7 @@ async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
         url=request.url,
         name=request.name,
         tmdb_id=request.tmdb_id,
+        season=request.season,
         poster_url=request.poster_url,
         exclude_patterns=request.exclude_patterns,
     )

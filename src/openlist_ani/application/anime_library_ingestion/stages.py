@@ -98,6 +98,7 @@ class RSSStage(PipelineStage[None]):
         self._last_scan_message = "尚未扫描"
         self._last_scan_new_count = 0
         self._next_scan_at: str | None = None
+        self._interval_changed = asyncio.Event()
         self._metadata_cache: TTLCache[str, ParseResult] = TTLCache(
             maxsize=self._METADATA_CACHE_MAXSIZE,
             ttl=self._METADATA_CACHE_TTL,
@@ -113,6 +114,12 @@ class RSSStage(PipelineStage[None]):
             download_path=download_path,
             rename_format=rename_format,
         )
+
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        self._interval_seconds = None
+        object.__setattr__(self._settings, "rss_interval_seconds", float(interval_seconds))
+        self._set_next_scan_at()
+        self._interval_changed.set()
 
     async def process_batch(self) -> None:
         try:
@@ -254,7 +261,13 @@ class RSSStage(PipelineStage[None]):
             rss_logger.info(f"RSS scan completed: no new releases{scan_suffix}")
 
     async def _sleep_until_next_scan(self) -> None:
-        await asyncio.sleep(self._scan_interval_seconds())
+        self._interval_changed.clear()
+        try:
+            await asyncio.wait_for(
+                self._interval_changed.wait(), timeout=self._scan_interval_seconds()
+            )
+        except asyncio.TimeoutError:
+            pass
 
     async def _reserve_download_task(self, entry: AnimeRelease) -> TaskMemento | None:
         return await self._task_reservation.reserve_download_task(

@@ -48,6 +48,11 @@ class TestRSSConfig:
         assert len(cfg.urls) == 2
         assert cfg.interval_time == 60
 
+    def test_subscription_defaults_to_first_season(self):
+        cfg = RSSConfig(subscriptions=[RSSSubscription(url="https://feed.example/rss")])
+        assert cfg.interval_time == 300
+        assert cfg.subscriptions[0].season == 1
+
     def test_legacy_urls_create_named_subscription_records(self):
         cfg = RSSConfig(urls=["https://feed.example/rss"])
         assert cfg.subscriptions[0].url == "https://feed.example/rss"

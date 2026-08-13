@@ -11,6 +11,7 @@ class AddRSSRequest(BaseModel):
     url: str = Field(..., description="RSS feed URL to monitor")
     name: str = Field(default="", max_length=200, description="Optional anime display name")
     tmdb_id: int | None = Field(default=None, description="Optional TMDB TV show id")
+    season: int | None = Field(default=None, ge=0, le=99)
     exclude_patterns: str = Field(
         default="",
         max_length=2000,
@@ -54,6 +55,7 @@ class CorrectRSSRequest(BaseModel):
     url: str = Field(..., description="Corrected RSS URL")
     name: str = Field(default="", max_length=200)
     tmdb_id: int | None = Field(default=None)
+    season: int | None = Field(default=None, ge=0, le=99)
     poster_url: str = Field(default="", max_length=1000)
     exclude_patterns: str = Field(default="", max_length=2000)
 
@@ -70,6 +72,7 @@ class UISettingsRequest(BaseModel):
     metadata_parser_provider: str | None = Field(default=None, max_length=50)
     download_path: str | None = Field(default=None, max_length=1000)
     rename_format: str | None = Field(default=None, max_length=1000)
+    poll_interval_seconds: int | None = Field(default=None, ge=60, le=86400)
 
 
 class RSSSubscriptionResponse(BaseModel):

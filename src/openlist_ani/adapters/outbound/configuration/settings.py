@@ -69,6 +69,7 @@ class RSSSubscription(BaseModel):
     enabled: bool = True
     tmdb_id: int | None = None
     poster_url: str = ""
+    season: int = Field(default=1, ge=0, le=99)
     exclude_patterns: list[str] = Field(
         default_factory=list,
         description="Regex patterns excluded only for this RSS subscription",
@@ -78,7 +79,12 @@ class RSSSubscription(BaseModel):
 class RSSConfig(BaseModel):
     urls: list[str] = Field(default_factory=list)
     subscriptions: list[RSSSubscription] = Field(default_factory=list)
-    interval_time: int = 300  # RSS fetch interval in seconds (default: 5 minutes)
+    interval_time: int = Field(
+        default=300,
+        ge=60,
+        le=86400,
+        description="RSS fetch interval in seconds (default: 5 minutes)",
+    )
     strict: bool = (
         False  # Strict mode: filter entries whose rename stem matches existing downloads
     )
@@ -384,6 +390,7 @@ class ConfigManager:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> None:
         """Add or reactivate an RSS subscription."""
@@ -398,6 +405,7 @@ class ConfigManager:
                     name=name.strip(),
                     tmdb_id=tmdb_id,
                     poster_url=poster_url.strip(),
+                    season=season or 1,
                     exclude_patterns=list(exclude_patterns or []),
                 )
             )
@@ -409,6 +417,8 @@ class ConfigManager:
                 existing.tmdb_id = tmdb_id
             if poster_url.strip():
                 existing.poster_url = poster_url.strip()
+            if season is not None:
+                existing.season = season
             if exclude_patterns is not None:
                 existing.exclude_patterns = list(exclude_patterns)
         self._sync_active_rss_urls()
@@ -422,6 +432,7 @@ class ConfigManager:
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
+        season: int | None = None,
         exclude_patterns: list[str] | None = None,
     ) -> bool:
         """Update display metadata or pause/resume a subscription."""
@@ -438,6 +449,8 @@ class ConfigManager:
             item.tmdb_id = tmdb_id
         if poster_url is not None:
             item.poster_url = poster_url.strip()
+        if season is not None:
+            item.season = season
         if exclude_patterns is not None:
             item.exclude_patterns = list(exclude_patterns)
         self._sync_active_rss_urls()
@@ -489,6 +502,12 @@ class ConfigManager:
             self._config.openlist.download_path = download_path.strip()
         if rename_format is not None:
             self._config.openlist.rename_format = rename_format.strip()
+        self.save()
+
+    def update_rss_settings(self, *, interval_time: int | None = None) -> None:
+        """Persist RSS polling settings edited by the built-in UI."""
+        if interval_time is not None:
+            self._config.rss.interval_time = interval_time
         self.save()
 
     def remove_rss_url(self, url: str) -> bool:

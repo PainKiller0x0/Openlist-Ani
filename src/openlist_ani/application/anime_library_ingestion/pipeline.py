@@ -158,6 +158,14 @@ class AnimeLibraryIngestionPipeline:
             if update is not None:
                 update(download_path=download_path, rename_format=rename_format)
 
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        """Apply a validated RSS polling interval without restarting the service."""
+        object.__setattr__(self.settings, "rss_interval_seconds", float(interval_seconds))
+        for stage in self._stages:
+            update = getattr(stage, "update_runtime_rss_interval", None)
+            if update is not None:
+                update(interval_seconds)
+
     def _rss_stage(self) -> RSSStage | None:
         return next(
             (stage for stage in self._stages if isinstance(stage, RSSStage)),
