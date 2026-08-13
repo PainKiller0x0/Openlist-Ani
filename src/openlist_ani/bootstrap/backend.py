@@ -126,7 +126,15 @@ async def run() -> None:
         metadata_parser=metadata_parser,
         metadata_validator=metadata_validator,
         settings=settings,
-        feed_reader=ReleaseFeedReader(list(config.rss.urls)),
+        feed_reader=ReleaseFeedReader(
+            list(config.rss.urls),
+            exclusion_patterns={
+                item.url: list(item.exclude_patterns)
+                for item in config.rss.subscriptions
+                if item.enabled
+            },
+            global_exclusion_patterns=list(config.rss.filter.exclude_patterns),
+        ),
         notifier=notification_manager,
     )
     await pipeline.start()
@@ -147,6 +155,12 @@ async def run() -> None:
                 item.model_dump(mode="json") for item in config.rss.subscriptions
             ],
             update_rss_subscription_func=config.update_rss_subscription,
+            get_global_exclude_patterns=lambda: list(
+                config.rss.filter.exclude_patterns
+            ),
+            update_global_exclude_patterns_func=lambda patterns: config.update_rss_filter(
+                exclude_patterns=patterns
+            ),
             lookup_tmdb_show=lambda name: _lookup_tmdb_show(tmdb_client, name),
             lookup_tmdb_show_by_id=lambda tmdb_id: _lookup_tmdb_show_by_id(
                 tmdb_client, tmdb_id

@@ -1,5 +1,8 @@
 import asyncio
 
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    filter_releases_by_title,
+)
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.logger import logger
 
@@ -18,13 +21,29 @@ class ReleaseFeedReader:
         self,
         urls: list[str],
         factory: FeedSourceFactory | None = None,
+        exclusion_patterns: dict[str, list[str]] | None = None,
+        global_exclusion_patterns: list[str] | None = None,
     ) -> None:
         self._urls = list(dict.fromkeys(urls))
         self._factory = factory or FeedSourceFactory()
+        self._exclusion_patterns = dict(exclusion_patterns or {})
+        self._global_exclusion_patterns = list(global_exclusion_patterns or [])
 
     def set_urls(self, urls: list[str]) -> None:
         """Replace monitored URLs without restarting the backend process."""
         self._urls = list(dict.fromkeys(urls))
+
+    def set_exclusion_patterns(self, patterns_by_url: dict[str, list[str]]) -> None:
+        """Replace per-subscription title exclusions at runtime."""
+        self._exclusion_patterns = {
+            url: list(patterns)
+            for url, patterns in patterns_by_url.items()
+            if patterns
+        }
+
+    def set_global_exclusion_patterns(self, patterns: list[str]) -> None:
+        """Replace global title exclusions at runtime."""
+        self._global_exclusion_patterns = list(patterns)
 
     async def fetch_new_releases(self) -> list[AnimeRelease]:
         """Fetch releases from all configured feeds."""
@@ -65,7 +84,20 @@ class ReleaseFeedReader:
             if not self._is_valid_feed_result(url, result):
                 continue
 
-            for entry in result:
+            entries = [entry for entry in result if entry.download_url]
+            accepted, excluded = filter_releases_by_title(
+                entries,
+                [
+                    *self._global_exclusion_patterns,
+                    *self._exclusion_patterns.get(url, []),
+                ],
+            )
+            if excluded:
+                logger.info(
+                    f"RSS source excluded {len(excluded)} entr{'y' if len(excluded) == 1 else 'ies'} "
+                    "by per-subscription rules"
+                )
+            for entry in accepted:
                 if not entry.download_url:
                     continue
                 new_entries.append(entry)

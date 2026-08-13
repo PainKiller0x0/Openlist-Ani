@@ -18,6 +18,10 @@ from openlist_ani.application.anime_library_ingestion.settings import (
     AnimeLibraryIngestionSettings,
 )
 from openlist_ani.application.anime_library_ingestion.models import ParseResult
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    filter_releases_by_title,
+    normalize_exclude_patterns,
+)
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.domain.download_task.memento import TaskMemento
 from openlist_ani.domain.download_task.task import DownloadState
@@ -71,6 +75,8 @@ class AnimeLibraryApplicationService:
         remove_rss_url_func: Callable[[str], bool],
         get_rss_subscriptions: Callable[[], list[dict[str, Any]]] | None = None,
         update_rss_subscription_func: Callable[..., bool] | None = None,
+        get_global_exclude_patterns: Callable[[], list[str]] | None = None,
+        update_global_exclude_patterns_func: Callable[[list[str]], None] | None = None,
         lookup_tmdb_show: LookupTMDBShow | None = None,
         lookup_tmdb_show_by_id: LookupTMDBShowByID | None = None,
     ) -> None:
@@ -91,6 +97,10 @@ class AnimeLibraryApplicationService:
         self._update_rss_subscription = update_rss_subscription_func or (
             lambda _url, **_kwargs: False
         )
+        self._get_global_exclude_patterns = get_global_exclude_patterns or (
+            lambda: list(self._settings.metadata_filter.exclude_patterns)
+        )
+        self._update_global_exclude_patterns = update_global_exclude_patterns_func
         self._lookup_tmdb_show = lookup_tmdb_show
         self._lookup_tmdb_show_by_id = lookup_tmdb_show_by_id
 
@@ -105,6 +115,7 @@ class AnimeLibraryApplicationService:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         current_urls = self._get_rss_urls()
         if url in current_urls:
@@ -116,16 +127,14 @@ class AnimeLibraryApplicationService:
                 name=name,
                 tmdb_id=tmdb_id,
                 poster_url=poster_url,
+                exclude_patterns=exclude_patterns,
             )
         except TypeError:
             # Keep old adapters and test doubles working while the richer
             # subscription metadata API rolls out.
             self._add_rss_url(url)
         updated_urls = self._get_rss_urls()
-        feed_reader = self._pipeline.feed_reader
-        set_urls = getattr(feed_reader, "set_urls", None)
-        if set_urls is not None:
-            set_urls(updated_urls)
+        self._sync_feed_reader(updated_urls)
         logger.info(f"Added RSS URL: {url}")
         return True, f"RSS URL added successfully: {url}", updated_urls
 
@@ -226,6 +235,7 @@ class AnimeLibraryApplicationService:
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         if not self._update_rss_subscription(
             url,
@@ -233,15 +243,52 @@ class AnimeLibraryApplicationService:
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            exclude_patterns=exclude_patterns,
         ):
             return False, f"RSS URL not found: {url}", self._get_rss_urls()
         updated_urls = self._get_rss_urls()
-        feed_reader = self._pipeline.feed_reader
-        set_urls = getattr(feed_reader, "set_urls", None)
-        if set_urls is not None:
-            set_urls(updated_urls)
+        self._sync_feed_reader(updated_urls)
         state = "resumed" if enabled else "paused" if enabled is False else "updated"
         return True, f"RSS subscription {state}: {url}", updated_urls
+
+    def update_global_exclude_patterns(
+        self, patterns: list[str]
+    ) -> tuple[bool, str]:
+        """Persist global title exclusions and apply them without restart."""
+        normalized = normalize_exclude_patterns(patterns)
+        if self._update_global_exclude_patterns is not None:
+            self._update_global_exclude_patterns(normalized)
+        # The settings object is shared with the running RSS stage.  Mutate
+        # its list in place because the settings dataclass is intentionally
+        # immutable while its runtime filter lists remain replaceable.
+        self._settings.metadata_filter.exclude_patterns[:] = normalized
+        self._sync_feed_reader()
+        return True, "全局排除规则已保存，下一次扫描立即生效"
+
+    def get_global_exclude_patterns(self) -> list[str]:
+        return list(normalize_exclude_patterns(self._get_global_exclude_patterns()))
+
+    def _sync_feed_reader(self, updated_urls: list[str] | None = None) -> None:
+        """Refresh active URLs and per-RSS filters on the live reader."""
+        feed_reader = self._pipeline.feed_reader
+        if feed_reader is None:
+            return
+        urls = updated_urls if updated_urls is not None else self._get_rss_urls()
+        set_urls = getattr(feed_reader, "set_urls", None)
+        if set_urls is not None:
+            set_urls(urls)
+        set_patterns = getattr(feed_reader, "set_exclusion_patterns", None)
+        if set_patterns is not None:
+            set_patterns({
+                str(item.get("url", "")): normalize_exclude_patterns(
+                    item.get("exclude_patterns", [])
+                )
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True) and item.get("url")
+            })
+        set_global_patterns = getattr(feed_reader, "set_global_exclusion_patterns", None)
+        if set_global_patterns is not None:
+            set_global_patterns(self.get_global_exclude_patterns())
 
     async def create_download(
         self,
@@ -297,11 +344,63 @@ class AnimeLibraryApplicationService:
         if not self._remove_rss_url(url):
             return False, f"RSS URL not found: {url}", current_urls
         updated_urls = self._get_rss_urls()
-        feed_reader = self._pipeline.feed_reader
-        set_urls = getattr(feed_reader, "set_urls", None)
-        if set_urls is not None:
-            set_urls(updated_urls)
+        self._sync_feed_reader(updated_urls)
         return True, f"RSS URL removed: {url}", updated_urls
+
+    async def preview_rss_subscription(
+        self,
+        url: str,
+        *,
+        preferred_name: str = "",
+        exclude_patterns: list[str] | None = None,
+        entry_limit: int = 80,
+    ) -> dict[str, Any]:
+        """Fetch, identify and preview an RSS before it is saved."""
+        parsed = await self.parse_rss(url)
+        if not parsed.success:
+            return {"success": False, "message": parsed.message}
+
+        metadata = await self.resolve_rss_subscription(url, preferred_name)
+        global_patterns = self.get_global_exclude_patterns()
+        local_patterns = normalize_exclude_patterns(exclude_patterns)
+        combined_patterns = list(dict.fromkeys(global_patterns + local_patterns))
+        accepted, excluded = filter_releases_by_title(
+            parsed.entries or [], combined_patterns
+        )
+
+        excluded_by_id = {
+            id(release): pattern for release, pattern in excluded
+        }
+
+        def entry_payload(release: AnimeRelease) -> dict[str, Any]:
+            return {
+                "title": release.title,
+                "download_url": release.download_url,
+                "anime_name": release.anime_name,
+                "episode": release.episode,
+                "fansub": release.fansub,
+                "quality": release.quality.value if release.quality else None,
+                "languages": [lang.value for lang in (release.languages or [])],
+                "excluded": id(release) in excluded_by_id,
+                "matched_pattern": excluded_by_id.get(id(release)),
+            }
+
+        ordered = [*accepted, *(release for release, _ in excluded)]
+        return {
+            "success": True,
+            "message": "RSS 已识别，请检查排除后的下载预览",
+            "url": url,
+            "name": metadata.get("name", "") or preferred_name.strip(),
+            "tmdb_id": metadata.get("tmdb_id"),
+            "poster_url": metadata.get("poster_url", ""),
+            "global_exclude_patterns": global_patterns,
+            "exclude_patterns": local_patterns,
+            "total": len(parsed.entries or []),
+            "included": len(accepted),
+            "excluded": len(excluded),
+            "entries": [entry_payload(release) for release in ordered[:entry_limit]],
+            "truncated": len(ordered) > entry_limit,
+        }
 
     async def parse_rss(
         self,

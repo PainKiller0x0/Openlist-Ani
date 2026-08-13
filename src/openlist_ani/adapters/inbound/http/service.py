@@ -7,6 +7,9 @@ from openlist_ani.application.anime_library_ingestion.application_service import
 )
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.domain.download_task.memento import TaskMemento
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    normalize_exclude_patterns,
+)
 
 from .schema import (
     DownloadTaskResponse,
@@ -120,9 +123,14 @@ class BackendApiService:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         return self._application_service.add_rss_url(
-            url, name=name, tmdb_id=tmdb_id, poster_url=poster_url
+            url,
+            name=name,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+            exclude_patterns=exclude_patterns,
         )
 
     def list_rss_subscriptions(self) -> list[dict[str, object]]:
@@ -136,6 +144,7 @@ class BackendApiService:
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> tuple[bool, str, list[str]]:
         return self._application_service.update_rss_subscription(
             url,
@@ -143,7 +152,36 @@ class BackendApiService:
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
+            exclude_patterns=exclude_patterns,
         )
+
+    async def preview_rss_subscription(
+        self,
+        url: str,
+        *,
+        preferred_name: str = "",
+        exclude_patterns: str | list[str] = "",
+    ) -> dict[str, object]:
+        return await self._application_service.preview_rss_subscription(
+            url,
+            preferred_name=preferred_name,
+            exclude_patterns=normalize_exclude_patterns(exclude_patterns),
+        )
+
+    def update_global_exclude_patterns(
+        self, exclude_patterns: str | list[str]
+    ) -> dict[str, object]:
+        success, message = self._application_service.update_global_exclude_patterns(
+            normalize_exclude_patterns(exclude_patterns)
+        )
+        return {
+            "success": success,
+            "message": message,
+            "exclude_patterns": self._application_service.get_global_exclude_patterns(),
+        }
+
+    def global_exclude_patterns(self) -> list[str]:
+        return self._application_service.get_global_exclude_patterns()
 
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.remove_rss_url(url)

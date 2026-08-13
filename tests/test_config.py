@@ -338,6 +338,30 @@ class TestConfigManager:
         assert mgr.update_rss_subscription("http://new.rss", enabled=True) is True
         assert mgr.rss.urls == ["http://new.rss"]
 
+    def test_rss_exclusion_patterns_persist(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mgr = ConfigManager("config.toml")
+        mgr.add_rss_url(
+            "http://new.rss",
+            exclude_patterns=["ABEMA", "CR"],
+        )
+        mgr.update_rss_filter(exclude_patterns=["Baha"])
+
+        mgr2 = ConfigManager("config.toml")
+        assert mgr2.rss.subscriptions[0].exclude_patterns == ["ABEMA", "CR"]
+        assert mgr2.rss.filter.exclude_patterns == ["Baha"]
+
+    def test_pipe_separated_ui_patterns_keep_regex_alternation(self):
+        from openlist_ani.application.anime_library_ingestion.exclusions import (
+            normalize_exclude_patterns,
+        )
+
+        assert normalize_exclude_patterns("ABEMA|CR") == ["ABEMA", "CR"]
+        assert normalize_exclude_patterns(r"(?i)\b(SP|OVA)\b|Baha") == [
+            r"(?i)\b(SP|OVA)\b",
+            "Baha",
+        ]
+
     def test_properties(self, tmp_path, monkeypatch):
         """All config properties should be accessible without error."""
         monkeypatch.chdir(tmp_path)

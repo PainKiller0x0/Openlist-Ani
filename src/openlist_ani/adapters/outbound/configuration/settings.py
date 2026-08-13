@@ -68,6 +68,10 @@ class RSSSubscription(BaseModel):
     enabled: bool = True
     tmdb_id: int | None = None
     poster_url: str = ""
+    exclude_patterns: list[str] = Field(
+        default_factory=list,
+        description="Regex patterns excluded only for this RSS subscription",
+    )
 
 
 class RSSConfig(BaseModel):
@@ -381,6 +385,7 @@ class ConfigManager:
         name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
+        exclude_patterns: list[str] | None = None,
     ) -> None:
         """Add or reactivate an RSS subscription."""
         self._remove_placeholder_rss(save=False)
@@ -394,6 +399,7 @@ class ConfigManager:
                     name=name.strip(),
                     tmdb_id=tmdb_id,
                     poster_url=poster_url.strip(),
+                    exclude_patterns=list(exclude_patterns or []),
                 )
             )
         else:
@@ -404,6 +410,8 @@ class ConfigManager:
                 existing.tmdb_id = tmdb_id
             if poster_url.strip():
                 existing.poster_url = poster_url.strip()
+            if exclude_patterns is not None:
+                existing.exclude_patterns = list(exclude_patterns)
         self._sync_active_rss_urls()
         self.save()
 
@@ -415,6 +423,7 @@ class ConfigManager:
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
+        exclude_patterns: list[str] | None = None,
     ) -> bool:
         """Update display metadata or pause/resume a subscription."""
         item = next(
@@ -430,9 +439,16 @@ class ConfigManager:
             item.tmdb_id = tmdb_id
         if poster_url is not None:
             item.poster_url = poster_url.strip()
+        if exclude_patterns is not None:
+            item.exclude_patterns = list(exclude_patterns)
         self._sync_active_rss_urls()
         self.save()
         return True
+
+    def update_rss_filter(self, *, exclude_patterns: list[str]) -> None:
+        """Update the global RSS title exclusion list and persist it."""
+        self._config.rss.filter.exclude_patterns = list(exclude_patterns)
+        self.save()
 
     def remove_rss_url(self, url: str) -> bool:
         """Remove an RSS URL from configuration."""

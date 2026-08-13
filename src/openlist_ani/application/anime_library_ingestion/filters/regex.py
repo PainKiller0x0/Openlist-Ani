@@ -23,7 +23,9 @@ class RegexTitleFilter:
     """
 
     def __init__(self, exclude_patterns: list[str] | None = None) -> None:
-        self._exclude_patterns = list(exclude_patterns or [])
+        # Keep the live list so the web UI can update global rules without
+        # rebuilding the long-running RSS stage.
+        self._exclude_patterns = exclude_patterns if exclude_patterns is not None else []
 
     async def apply(
         self,

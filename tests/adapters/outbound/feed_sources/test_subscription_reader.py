@@ -43,6 +43,31 @@ def test_set_urls_updates_sources_and_deduplicates():
     ]
 
 
+def test_set_exclusion_patterns_updates_per_subscription_rules():
+    reader = ReleaseFeedReader(["https://example.com/rss"])
+
+    reader.set_exclusion_patterns({"https://example.com/rss": ["ABEMA", "CR"]})
+
+    assert reader._exclusion_patterns == {
+        "https://example.com/rss": ["ABEMA", "CR"]
+    }
+
+
+async def test_per_subscription_exclusions_are_applied_before_merge():
+    url = "https://example.com/rss"
+    reader = ReleaseFeedReader(urls=[url], exclusion_patterns={url: ["ABEMA"]})
+    excluded = AnimeRelease(title="Anime 01 ABEMA", download_url="magnet:?a")
+    accepted = AnimeRelease(title="Anime 01 CR", download_url="magnet:?b")
+
+    mock_handler = AsyncMock()
+    mock_handler.fetch_feed = AsyncMock(return_value=[excluded, accepted])
+
+    with patch.object(reader, "_get_feed_source", return_value=mock_handler):
+        result = await reader.fetch_new_releases()
+
+    assert [entry.title for entry in result] == ["Anime 01 CR"]
+
+
 async def test_entries_from_multiple_feeds_are_merged():
     reader = ReleaseFeedReader(["https://a.com/rss", "https://b.com/rss"])
     r1 = AnimeRelease(title="Anime A - 01", download_url="magnet:?a")

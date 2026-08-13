@@ -13,6 +13,14 @@ exclude_fansub = []  # Blacklist fansub groups (exact match, e.g. ["Fansub_A", "
 exclude_quality = []  # Blacklist quality levels (e.g. ["480p"])
 exclude_languages = []  # Blacklist language labels. See docs for supported values.
 
+# The web UI stores per-subscription exclusions under [[rss.subscriptions]].
+# Example:
+# [[rss.subscriptions]]
+# url = "https://mikanani.me/RSS/MyBangumi?token=xxx"
+# name = "示例番剧"
+# enabled = true
+# exclude_patterns = ["ABEMA", "CR"]
+
 [rss.priority]
 field_order = ["fansub", "quality", "languages"]  # Field comparison order, earlier fields take precedence
 fansub = []  # Fansub group priority, earlier = higher (e.g. ["Fansub_A", "Fansub_B"])

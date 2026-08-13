@@ -26,9 +26,14 @@ from .schema import (
     ResolveTorrentRequest,
     ResolveTorrentResponse,
     RestartResponse,
+    GlobalRSSFilterRequest,
+    RSSPreviewRequest,
     ToggleRSSRequest,
 )
 from .service import BackendApiService
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    normalize_exclude_patterns,
+)
 
 router = APIRouter(prefix="/api")
 UPLOAD_DIR = Path("data/uploads")
@@ -57,6 +62,7 @@ async def ui_state() -> dict:
             if item.get("enabled", True)
         ],
         "rss_subscriptions": subscriptions,
+        "global_exclude_patterns": svc.global_exclude_patterns(),
         "download_path": config.openlist.download_path,
         "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
@@ -73,6 +79,8 @@ async def ui_scan_now() -> dict[str, object]:
 @router.post("/ui/rss")
 async def ui_add_rss(request: AddRSSRequest) -> dict:
     """Validate, persist and activate a new RSS subscription."""
+    if not request.confirmed:
+        raise HTTPException(status_code=409, detail="请先完成 RSS 识别预览，再点击确认保存")
     svc = BackendApiService.get()
     parsed = await svc.parse_rss(request.url, limit=1)
     if not parsed.success:
@@ -84,6 +92,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         name=str(metadata.get("name", "") or request.name).strip(),
         tmdb_id=metadata.get("tmdb_id"),
         poster_url=str(metadata.get("poster_url", "") or ""),
+        exclude_patterns=normalize_exclude_patterns(request.exclude_patterns),
     )
     preview = parsed.entries[0].title if parsed.entries else ""
     if success:
@@ -96,7 +105,32 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         "name": metadata.get("name", "") or request.name.strip(),
         "tmdb_id": metadata.get("tmdb_id"),
         "poster_url": metadata.get("poster_url", ""),
+        "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
     }
+
+
+@router.post("/ui/rss/preview")
+async def ui_preview_rss(request: RSSPreviewRequest) -> dict:
+    """Fetch and identify an RSS without saving it."""
+    svc = BackendApiService.get()
+    preview = await svc.preview_rss_subscription(
+        request.url,
+        preferred_name=request.name,
+        exclude_patterns=request.exclude_patterns,
+    )
+    if not preview.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=preview.get("message", "RSS 解析失败"),
+        )
+    return preview
+
+
+@router.post("/ui/rss/filter")
+async def ui_update_global_rss_filter(request: GlobalRSSFilterRequest) -> dict:
+    """Update the global RSS title exclusion list."""
+    svc = BackendApiService.get()
+    return svc.update_global_exclude_patterns(request.exclude_patterns)
 
 
 @router.post("/ui/rss/toggle")
@@ -109,6 +143,24 @@ async def ui_toggle_rss(request: ToggleRSSRequest) -> dict:
     if not success:
         raise HTTPException(status_code=404, detail=message)
     return {"success": True, "message": message, "urls": urls}
+
+
+@router.post("/ui/rss/exclude")
+async def ui_update_rss_exclude(request: AddRSSRequest) -> dict:
+    """Update only one subscription's title exclusions."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.update_rss_subscription(
+        request.url,
+        exclude_patterns=normalize_exclude_patterns(request.exclude_patterns),
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {
+        "success": True,
+        "message": "单个 RSS 排除规则已保存，下一次扫描立即生效",
+        "urls": urls,
+        "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
+    }
 
 
 @router.post("/ui/rss/metadata")

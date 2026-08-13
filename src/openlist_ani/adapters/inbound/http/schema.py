@@ -11,6 +11,33 @@ class AddRSSRequest(BaseModel):
     url: str = Field(..., description="RSS feed URL to monitor")
     name: str = Field(default="", max_length=200, description="Optional anime display name")
     tmdb_id: int | None = Field(default=None, description="Optional TMDB TV show id")
+    exclude_patterns: str = Field(
+        default="",
+        max_length=2000,
+        description="Pipe-separated title exclusion regex patterns",
+    )
+    confirmed: bool = Field(
+        default=False,
+        description="Whether the user confirmed the preview before saving",
+    )
+
+
+class RSSPreviewRequest(BaseModel):
+    """Request body for previewing an RSS before persistence."""
+
+    url: str = Field(..., description="RSS feed URL")
+    name: str = Field(default="", max_length=200, description="Optional display name")
+    exclude_patterns: str = Field(
+        default="", max_length=2000, description="Pipe-separated title exclusions"
+    )
+
+
+class GlobalRSSFilterRequest(BaseModel):
+    """Request body for the global RSS title exclusion list."""
+
+    exclude_patterns: str = Field(
+        default="", max_length=4000, description="Pipe-separated title exclusions"
+    )
 
 
 class ToggleRSSRequest(BaseModel):
