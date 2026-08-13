@@ -64,6 +64,7 @@ class UISettingsRequest(BaseModel):
     """Request body for the built-in settings dialog."""
 
     global_exclude_patterns: str = Field(default="", max_length=4000)
+    openlist_url: str | None = Field(default=None, max_length=1000)
     llm_provider_type: str | None = Field(default=None, max_length=50)
     llm_api_key: str | None = Field(default=None, max_length=500)
     llm_base_url: str | None = Field(default=None, max_length=1000)

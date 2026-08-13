@@ -166,6 +166,11 @@ async def run() -> None:
                 tmdb_client, tmdb_id
             ),
             validate_openlist_path=openlist_client.validate_path,
+            validate_openlist_url=lambda url: _validate_candidate_openlist_url(url),
+            validate_openlist_path_at_url=lambda url, path: _validate_candidate_openlist_path(
+                url, path
+            ),
+            update_openlist_url=openlist_client.update_base_url,
         )
     )
 
@@ -222,6 +227,43 @@ def _log_startup_summary() -> None:
 
 def _create_openlist_client() -> OpenListClient:
     return OpenListClient(base_url=config.openlist.url, token=config.openlist.token)
+
+
+async def _validate_candidate_openlist_url(url: str) -> tuple[bool, str]:
+    """Validate a candidate OpenList endpoint without changing the live client."""
+    try:
+        candidate = OpenListClient(base_url=url, token=config.openlist.token)
+    except ValueError as exc:
+        return False, str(exc)
+
+    try:
+        valid = await OpenListHealthCheck(
+            client=candidate,
+            base_url=candidate.base_url,
+            offline_download_tool=config.openlist.offline_download_tool,
+        ).validate()
+        return (
+            (True, candidate.base_url)
+            if valid
+            else (False, f"无法连接或验证 OpenList：{candidate.base_url}")
+        )
+    finally:
+        await candidate.close()
+
+
+async def _validate_candidate_openlist_path(
+    url: str, path: str
+) -> tuple[bool, str]:
+    """Validate a download path against a candidate OpenList endpoint."""
+    try:
+        candidate = OpenListClient(base_url=url, token=config.openlist.token)
+    except ValueError as exc:
+        return False, str(exc)
+
+    try:
+        return await candidate.validate_path(path)
+    finally:
+        await candidate.close()
 
 
 async def _validate_openlist(client: OpenListClient) -> bool:

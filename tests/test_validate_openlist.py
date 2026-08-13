@@ -30,6 +30,19 @@ async def _validate_with_client(mgr: ConfigManager, client: AsyncMock) -> bool:
 
 
 class TestValidateOpenlist:
+    def test_normalize_base_url(self):
+        assert OpenListClient.normalize_base_url(" https://openlist.example/ ") == (
+            "https://openlist.example"
+        )
+
+    @pytest.mark.parametrize(
+        "url",
+        ["", "openlist.example", "ftp://openlist.example", "https://openlist.example?x=1"],
+    )
+    def test_normalize_base_url_rejects_invalid_values(self, url):
+        with pytest.raises(ValueError):
+            OpenListClient.normalize_base_url(url)
+
     @pytest.mark.asyncio
     async def test_health_check_fails(self, mgr):
         client = AsyncMock()

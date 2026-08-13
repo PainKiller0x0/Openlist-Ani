@@ -44,6 +44,9 @@ class ReleaseFeedSourceFactoryPort(Protocol):
 ResolveMagnet = Callable[..., Awaitable[Any]]
 ResolveTorrent = Callable[..., Awaitable[Any]]
 ValidateOpenListPath = Callable[[str], Awaitable[tuple[bool, str]]]
+ValidateOpenListURL = Callable[[str], Awaitable[tuple[bool, str]]]
+ValidateOpenListPathAtURL = Callable[[str, str], Awaitable[tuple[bool, str]]]
+UpdateOpenListURL = Callable[[str], None]
 LookupTMDBShow = Callable[[str], Awaitable[dict[str, Any] | None]]
 LookupTMDBShowByID = Callable[[int], Awaitable[dict[str, Any] | None]]
 
@@ -86,6 +89,9 @@ class AnimeLibraryApplicationService:
         lookup_tmdb_show: LookupTMDBShow | None = None,
         lookup_tmdb_show_by_id: LookupTMDBShowByID | None = None,
         validate_openlist_path: ValidateOpenListPath | None = None,
+        validate_openlist_url: ValidateOpenListURL | None = None,
+        validate_openlist_path_at_url: ValidateOpenListPathAtURL | None = None,
+        update_openlist_url: UpdateOpenListURL | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._metadata_parser = metadata_parser
@@ -111,6 +117,9 @@ class AnimeLibraryApplicationService:
         self._lookup_tmdb_show = lookup_tmdb_show
         self._lookup_tmdb_show_by_id = lookup_tmdb_show_by_id
         self._validate_openlist_path = validate_openlist_path
+        self._validate_openlist_url = validate_openlist_url
+        self._validate_openlist_path_at_url = validate_openlist_path_at_url
+        self._update_openlist_url = update_openlist_url
 
     @property
     def pipeline(self) -> AnimeLibraryIngestionPipeline:
@@ -366,6 +375,20 @@ class AnimeLibraryApplicationService:
             return False, "当前服务未连接 OpenList，无法验证下载目录"
         return await self._validate_openlist_path(path)
 
+    async def validate_openlist_url(self, url: str) -> tuple[bool, str]:
+        """Check a candidate OpenList endpoint before persisting it."""
+        if self._validate_openlist_url is None:
+            return False, "当前服务未提供 OpenList 地址验证能力"
+        return await self._validate_openlist_url(url)
+
+    async def validate_download_path_at_url(
+        self, url: str, path: str
+    ) -> tuple[bool, str]:
+        """Validate a download path against a candidate OpenList endpoint."""
+        if self._validate_openlist_path_at_url is None:
+            return False, "当前服务未提供候选 OpenList 地址验证能力"
+        return await self._validate_openlist_path_at_url(url, path)
+
     def validate_rename_format(self, rename_format: str) -> tuple[bool, str]:
         return validate_rename_format(rename_format)
 
@@ -376,6 +399,11 @@ class AnimeLibraryApplicationService:
             download_path=download_path,
             rename_format=rename_format,
         )
+
+    def update_runtime_openlist_url(self, url: str) -> None:
+        """Switch the shared OpenList client without restarting the service."""
+        if self._update_openlist_url is not None:
+            self._update_openlist_url(url)
 
     def update_runtime_rss_interval(self, interval_seconds: int) -> None:
         self._pipeline.update_runtime_rss_interval(interval_seconds)

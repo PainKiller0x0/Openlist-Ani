@@ -494,10 +494,13 @@ class ConfigManager:
     def update_openlist_settings(
         self,
         *,
+        openlist_url: str | None = None,
         download_path: str | None = None,
         rename_format: str | None = None,
     ) -> None:
-        """Persist the validated OpenList destination and rename format."""
+        """Persist the validated OpenList endpoint, destination and rename format."""
+        if openlist_url is not None:
+            self._config.openlist.url = openlist_url.strip().rstrip("/")
         if download_path is not None:
             self._config.openlist.download_path = download_path.strip()
         if rename_format is not None:

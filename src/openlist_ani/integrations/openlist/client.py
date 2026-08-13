@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -24,7 +25,7 @@ class OpenListClient:
         max_retries: int = 3,
         retry_backoff_seconds: float = 0.8,
     ):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = self.normalize_base_url(base_url)
         self.token = token or ""
         self.headers = {
             "Content-Type": "application/json",
@@ -45,6 +46,24 @@ class OpenListClient:
         logger.debug(
             f"OpenListClient initialized with max {max_concurrent_requests} concurrent requests"
         )
+
+    @staticmethod
+    def normalize_base_url(base_url: str) -> str:
+        """Normalize and validate an OpenList HTTP(S) base URL."""
+        normalized = str(base_url or "").strip().rstrip("/")
+        parsed = urlsplit(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("OpenList 地址必须是带 http:// 或 https:// 的完整地址")
+        if parsed.query or parsed.fragment:
+            raise ValueError("OpenList 地址不能包含查询参数或片段")
+        return normalized
+
+    def update_base_url(self, base_url: str) -> str:
+        """Switch this shared client to a validated OpenList endpoint."""
+        normalized = self.normalize_base_url(base_url)
+        self.base_url = normalized
+        logger.info(f"OpenList endpoint updated to {normalized}")
+        return normalized
 
     async def start(self) -> None:
         async with self._semaphore:

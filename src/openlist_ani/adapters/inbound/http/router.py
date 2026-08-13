@@ -65,6 +65,7 @@ async def ui_state() -> dict:
         ],
         "rss_subscriptions": subscriptions,
         "global_exclude_patterns": svc.global_exclude_patterns(),
+        "openlist_url": config.openlist.url,
         "download_path": config.openlist.download_path,
         "poll_interval_seconds": config.rss.interval_time,
         "rss_status": svc.rss_status(),
@@ -86,6 +87,7 @@ async def ui_settings() -> dict:
             "metadata_parser_provider": config.metadata_parser.provider,
         },
         "download_path": config.openlist.download_path,
+        "openlist_url": config.openlist.url,
         "rename_format": config.openlist.rename_format,
         "poll_interval_seconds": config.rss.interval_time,
     }
@@ -101,6 +103,11 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
         if request.download_path is not None
         else config.openlist.download_path
     )
+    requested_openlist_url = (
+        request.openlist_url.strip()
+        if request.openlist_url is not None
+        else config.openlist.url
+    )
     requested_format = (
         request.rename_format.strip()
         if request.rename_format is not None
@@ -114,24 +121,40 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
     format_ok, format_error = svc.validate_rename_format(requested_format)
     if not format_ok:
         raise HTTPException(status_code=400, detail=format_error)
-    if request.download_path is not None:
-        path_ok, path_result = await svc.validate_download_path(requested_path)
+    if request.openlist_url is not None:
+        url_ok, url_result = await svc.validate_openlist_url(requested_openlist_url)
+        if not url_ok:
+            raise HTTPException(status_code=400, detail=url_result)
+        requested_openlist_url = url_result
+    if request.download_path is not None or request.openlist_url is not None:
+        if request.openlist_url is not None:
+            path_ok, path_result = await svc.validate_download_path_at_url(
+                requested_openlist_url, requested_path
+            )
+        else:
+            path_ok, path_result = await svc.validate_download_path(requested_path)
         if not path_ok:
             raise HTTPException(status_code=400, detail=path_result)
         requested_path = path_result
 
-    if request.download_path is not None or request.rename_format is not None:
+    if (
+        request.openlist_url is not None
+        or request.download_path is not None
+        or request.rename_format is not None
+    ):
         config.update_openlist_settings(
+            openlist_url=requested_openlist_url,
+            download_path=requested_path,
+            rename_format=requested_format,
+        )
+        svc.update_runtime_openlist_url(requested_openlist_url)
+        svc.update_runtime_openlist_settings(
             download_path=requested_path,
             rename_format=requested_format,
         )
     if request.poll_interval_seconds is not None:
         config.update_rss_settings(interval_time=requested_interval)
         svc.update_runtime_rss_interval(requested_interval)
-        svc.update_runtime_openlist_settings(
-            download_path=requested_path,
-            rename_format=requested_format,
-        )
     svc.update_global_exclude_patterns(request.global_exclude_patterns)
     config.update_llm_settings(
         provider_type=request.llm_provider_type,
