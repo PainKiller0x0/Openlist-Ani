@@ -27,6 +27,7 @@ from openlist_ani.logger import logger
 # or a malicious response.
 _MAX_TORRENT_BYTES = 10 * 1024 * 1024
 _TORRENT_DOWNLOAD_TIMEOUT_SECS = 30.0
+_TORRENT_USER_AGENT = "Mozilla/5.0 (OpenList-Ani; torrent resolver)"
 
 # ── Models ───────────────────────────────────────────────────────────
 
@@ -352,7 +353,10 @@ async def _download_torrent_bytes(url: str) -> tuple[bytes | None, str | None]:
     """
     timeout = aiohttp.ClientTimeout(total=_TORRENT_DOWNLOAD_TIMEOUT_SECS)
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            headers={"User-Agent": _TORRENT_USER_AGENT},
+        ) as session:
             async with session.get(url) as resp:
                 if resp.status >= 400:
                     return None, (f"HTTP {resp.status} while fetching torrent file.")
@@ -375,6 +379,53 @@ async def _download_torrent_bytes(url: str) -> tuple[bytes | None, str | None]:
         )
     except aiohttp.ClientError as e:
         return None, f"HTTP client error: {e}"
+
+
+def is_torrent_url(url: str) -> bool:
+    """Return whether *url* points at a torrent file.
+
+    OpenList's Thunder offline-download driver accepts HTTP resources and
+    magnets, but an HTTP URL ending in ``.torrent`` is treated as a regular
+    file download.  The downloader therefore converts these URLs to magnets
+    before submitting them to OpenList.
+    """
+    if not isinstance(url, str) or not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return (
+        parsed.scheme.lower() in {"http", "https"}
+        and bool(parsed.netloc)
+        and parsed.path.lower().endswith(".torrent")
+    )
+
+
+def _make_magnet_from_torrent_blob(blob: bytes) -> str:
+    """Build a magnet URI from a torrent blob using libtorrent."""
+    try:
+        import libtorrent as lt  # type: ignore[import-not-found]
+    except Exception as e:  # pragma: no cover - environment dependent
+        raise RuntimeError(f"libtorrent is unavailable: {e}") from e
+
+    try:
+        info = lt.torrent_info(blob)
+        return lt.make_magnet_uri(info)
+    except Exception as e:
+        raise RuntimeError(f"could not parse torrent metadata: {e}") from e
+
+
+async def torrent_url_to_magnet(url: str) -> str:
+    """Download a ``.torrent`` URL and convert it to a magnet URI."""
+    if not is_torrent_url(url):
+        return url
+
+    blob, error = await _download_torrent_bytes(url)
+    if blob is None:
+        raise RuntimeError(error or "could not download torrent file")
+
+    return await asyncio.to_thread(_make_magnet_from_torrent_blob, blob)
 
 
 def _parse_torrent_blob(blob: bytes) -> tuple[str | None, list[TorrentFile]]:

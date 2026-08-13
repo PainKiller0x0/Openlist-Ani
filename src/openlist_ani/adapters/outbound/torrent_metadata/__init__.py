@@ -6,8 +6,10 @@ from .resolver import (
     ResolveResult,
     TorrentFile,
     TorrentFileResolver,
+    is_torrent_url,
     resolve_magnet,
     resolve_torrent,
+    torrent_url_to_magnet,
 )
 
 __all__ = [
@@ -16,6 +18,8 @@ __all__ = [
     "ResolveResult",
     "TorrentFile",
     "TorrentFileResolver",
+    "is_torrent_url",
     "resolve_magnet",
     "resolve_torrent",
+    "torrent_url_to_magnet",
 ]

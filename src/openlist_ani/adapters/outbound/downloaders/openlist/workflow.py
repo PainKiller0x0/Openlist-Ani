@@ -17,6 +17,10 @@ from openlist_ani.integrations.openlist import (
     OpenlistTaskState,
 )
 from openlist_ani.logger import logger
+from openlist_ani.adapters.outbound.torrent_metadata import (
+    is_torrent_url,
+    torrent_url_to_magnet,
+)
 
 from .file_detection import OpenListFileDetector
 from .task_snapshot_cache import OpenListTaskSnapshotCache
@@ -208,13 +212,25 @@ class OpenListDownloadWorkflow:
         temp_path = _join_openlist_path(_temp_root_path(task.base_path), task.id)
         task.downloader_data["temp_path"] = temp_path
 
+        submitted_url = task.downloader_data.get("submitted_url")
+        if not submitted_url:
+            submitted_url = task.release.download_url
+            if is_torrent_url(submitted_url):
+                try:
+                    submitted_url = await torrent_url_to_magnet(submitted_url)
+                except Exception as error:
+                    raise DownloadError(
+                        f"Could not convert torrent URL to magnet: {error}"
+                    ) from error
+            task.downloader_data["submitted_url"] = submitted_url
+
         logger.debug(
             f"OpenList submit: title={task.release.title}, "
-            f"url={task.release.download_url}, temp={temp_path}"
+            f"url={submitted_url}, temp={temp_path}"
         )
 
         tasks = await self._client.add_offline_download(
-            urls=[task.release.download_url],
+            urls=[submitted_url],
             path=temp_path,
             tool=self._offline_download_tool,
         )
