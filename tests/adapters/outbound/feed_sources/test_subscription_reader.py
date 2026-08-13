@@ -68,6 +68,22 @@ async def test_per_subscription_exclusions_are_applied_before_merge():
     assert [entry.title for entry in result] == ["Anime 01 CR"]
 
 
+async def test_subscription_reader_applies_directory_name_override():
+    url = "https://example.com/rss"
+    reader = ReleaseFeedReader(
+        urls=[url],
+        download_directory_names={url: "自定义目录"},
+    )
+    release = AnimeRelease(title="Anime 01", download_url="magnet:?a")
+    mock_handler = AsyncMock()
+    mock_handler.fetch_feed = AsyncMock(return_value=[release])
+
+    with patch.object(reader, "_get_feed_source", return_value=mock_handler):
+        result = await reader.fetch_new_releases()
+
+    assert result[0].download_directory_name_override == "自定义目录"
+
+
 async def test_entries_from_multiple_feeds_are_merged():
     reader = ReleaseFeedReader(["https://a.com/rss", "https://b.com/rss"])
     r1 = AnimeRelease(title="Anime A - 01", download_url="magnet:?a")

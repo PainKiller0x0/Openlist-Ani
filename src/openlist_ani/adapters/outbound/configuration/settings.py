@@ -67,6 +67,7 @@ class RSSSubscription(BaseModel):
     url: str
     name: str = ""
     anime_name: str = ""
+    download_directory_name: str = ""
     enabled: bool = True
     tmdb_id: int | None = None
     poster_url: str = ""
@@ -396,6 +397,7 @@ class ConfigManager:
         *,
         name: str = "",
         anime_name: str = "",
+        download_directory_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -412,6 +414,7 @@ class ConfigManager:
                     url=url,
                     name=name.strip(),
                     anime_name=anime_name.strip(),
+                    download_directory_name=download_directory_name.strip(),
                     tmdb_id=tmdb_id,
                     poster_url=poster_url.strip(),
                     season=season or 1,
@@ -424,6 +427,8 @@ class ConfigManager:
                 existing.name = name.strip()
             if anime_name.strip():
                 existing.anime_name = anime_name.strip()
+            if download_directory_name.strip():
+                existing.download_directory_name = download_directory_name.strip()
             if tmdb_id is not None:
                 existing.tmdb_id = tmdb_id
             if poster_url.strip():
@@ -441,6 +446,7 @@ class ConfigManager:
         *,
         name: str | None = None,
         anime_name: str | None = None,
+        download_directory_name: str | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -457,6 +463,8 @@ class ConfigManager:
             item.name = name.strip()
         if anime_name is not None:
             item.anime_name = anime_name.strip()
+        if download_directory_name is not None:
+            item.download_directory_name = download_directory_name.strip()
         if enabled is not None:
             item.enabled = enabled
         if tmdb_id is not None:

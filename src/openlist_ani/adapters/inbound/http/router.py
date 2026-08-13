@@ -217,6 +217,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         request.url,
         name=str(metadata.get("name", "") or request.name).strip(),
         anime_name=(request.anime_name.strip() or request.name.strip()),
+        download_directory_name=request.download_directory_name.strip(),
         tmdb_id=metadata.get("tmdb_id"),
         poster_url=str(metadata.get("poster_url", "") or ""),
         season=request.season or 1,
@@ -232,6 +233,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         "preview": preview,
         "name": metadata.get("name", "") or request.name.strip(),
         "anime_name": request.anime_name.strip() or request.name.strip(),
+        "download_directory_name": request.download_directory_name.strip(),
         "tmdb_id": metadata.get("tmdb_id"),
         "poster_url": metadata.get("poster_url", ""),
         "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
@@ -246,6 +248,7 @@ async def ui_preview_rss(request: RSSPreviewRequest) -> dict:
         request.url,
         preferred_name=request.name,
         preferred_anime_name=request.anime_name,
+        preferred_download_directory_name=request.download_directory_name,
         exclude_patterns=request.exclude_patterns,
     )
     if not preview.get("success"):
@@ -302,6 +305,7 @@ async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
         url=request.url,
         name=request.name,
         anime_name=request.anime_name or request.name,
+        download_directory_name=request.download_directory_name,
         tmdb_id=request.tmdb_id,
         season=request.season,
         poster_url=request.poster_url,

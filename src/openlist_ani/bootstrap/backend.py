@@ -140,6 +140,11 @@ async def run() -> None:
                 for item in config.rss.subscriptions
                 if item.enabled and item.anime_name
             },
+            download_directory_names={
+                item.url: item.download_directory_name
+                for item in config.rss.subscriptions
+                if item.enabled and item.download_directory_name
+            },
         ),
         notifier=notification_manager,
     )

@@ -24,12 +24,14 @@ class ReleaseFeedReader:
         exclusion_patterns: dict[str, list[str]] | None = None,
         global_exclusion_patterns: list[str] | None = None,
         anime_names: dict[str, str] | None = None,
+        download_directory_names: dict[str, str] | None = None,
     ) -> None:
         self._urls = list(dict.fromkeys(urls))
         self._factory = factory or FeedSourceFactory()
         self._exclusion_patterns = dict(exclusion_patterns or {})
         self._global_exclusion_patterns = list(global_exclusion_patterns or [])
         self._anime_names = dict(anime_names or {})
+        self._download_directory_names = dict(download_directory_names or {})
 
     def set_urls(self, urls: list[str]) -> None:
         """Replace monitored URLs without restarting the backend process."""
@@ -50,6 +52,14 @@ class ReleaseFeedReader:
     def set_anime_names(self, names_by_url: dict[str, str]) -> None:
         """Replace explicit per-subscription anime-name overrides."""
         self._anime_names = {
+            url: name.strip()
+            for url, name in names_by_url.items()
+            if name and name.strip()
+        }
+
+    def set_download_directory_names(self, names_by_url: dict[str, str]) -> None:
+        """Replace explicit per-subscription download directory names."""
+        self._download_directory_names = {
             url: name.strip()
             for url, name in names_by_url.items()
             if name and name.strip()
@@ -112,6 +122,7 @@ class ReleaseFeedReader:
                     continue
                 entry.source_url = url
                 entry.anime_name_override = self._anime_names.get(url)
+                entry.download_directory_name_override = self._download_directory_names.get(url)
                 new_entries.append(entry)
         return new_entries
 

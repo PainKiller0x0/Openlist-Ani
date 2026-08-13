@@ -52,6 +52,20 @@ class TestRSSConfig:
         cfg = RSSConfig(subscriptions=[RSSSubscription(url="https://feed.example/rss")])
         assert cfg.interval_time == 300
         assert cfg.subscriptions[0].season == 1
+        assert cfg.subscriptions[0].download_directory_name == ""
+
+    def test_subscription_supports_an_independent_directory_name(self):
+        cfg = RSSConfig(
+            subscriptions=[
+                RSSSubscription(
+                    url="https://feed.example/rss",
+                    anime_name="文件名番剧",
+                    download_directory_name="网盘目录番剧",
+                )
+            ]
+        )
+        assert cfg.subscriptions[0].anime_name == "文件名番剧"
+        assert cfg.subscriptions[0].download_directory_name == "网盘目录番剧"
 
     def test_legacy_urls_create_named_subscription_records(self):
         cfg = RSSConfig(urls=["https://feed.example/rss"])

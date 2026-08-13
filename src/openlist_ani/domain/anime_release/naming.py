@@ -153,4 +153,9 @@ class ReleaseDirectoryPlanner:
 
     def target_directory_path(self, base_path: str, release: AnimeRelease) -> str:
         season_dir = f"Season {release_season(release)}"
-        return f"{base_path.rstrip('/')}/{release_anime_name(release)}/{season_dir}"
+        directory_name = (
+            release.download_directory_name_override
+            or release.anime_name
+            or "Unknown"
+        )
+        return f"{base_path.rstrip('/')}/{sanitize_filename(directory_name)}/{season_dir}"

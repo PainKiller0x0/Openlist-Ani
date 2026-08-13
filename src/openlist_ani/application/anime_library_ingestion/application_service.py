@@ -135,6 +135,7 @@ class AnimeLibraryApplicationService:
         *,
         name: str = "",
         anime_name: str = "",
+        download_directory_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -149,6 +150,7 @@ class AnimeLibraryApplicationService:
                 url,
                 name=name,
                 anime_name=anime_name,
+                download_directory_name=download_directory_name,
                 tmdb_id=tmdb_id,
                 poster_url=poster_url,
                 season=season,
@@ -174,9 +176,17 @@ class AnimeLibraryApplicationService:
                     or "未命名订阅"
                 )
             )
+            directory_name = sanitize_filename(
+                str(
+                    enriched.get("download_directory_name", "")
+                    or enriched.get("anime_name", "")
+                    or enriched.get("name", "")
+                    or "未命名订阅"
+                )
+            )
             season = int(enriched.get("season") or 1)
             enriched["download_directory"] = (
-                f"{self._settings.download_path.rstrip('/')}/{name}/Season {season}"
+                f"{self._settings.download_path.rstrip('/')}/{directory_name}/Season {season}"
             )
             subscriptions.append(enriched)
         return subscriptions
@@ -287,6 +297,7 @@ class AnimeLibraryApplicationService:
         *,
         name: str | None = None,
         anime_name: str | None = None,
+        download_directory_name: str | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -297,6 +308,7 @@ class AnimeLibraryApplicationService:
             url,
             name=name,
             anime_name=anime_name,
+            download_directory_name=download_directory_name,
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
@@ -331,6 +343,7 @@ class AnimeLibraryApplicationService:
         url: str,
         name: str = "",
         anime_name: str = "",
+        download_directory_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -358,6 +371,7 @@ class AnimeLibraryApplicationService:
                 original_url,
                 name=name,
                 anime_name=anime_name,
+                download_directory_name=download_directory_name,
                 tmdb_id=tmdb_id,
                 poster_url=effective_poster_url,
                 season=season,
@@ -373,6 +387,7 @@ class AnimeLibraryApplicationService:
             url,
             name=name,
             anime_name=anime_name,
+            download_directory_name=download_directory_name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -479,6 +494,17 @@ class AnimeLibraryApplicationService:
                 for item in self._get_rss_subscriptions()
                 if item.get("enabled", True) and item.get("url")
             })
+        set_download_directory_names = getattr(
+            feed_reader, "set_download_directory_names", None
+        )
+        if set_download_directory_names is not None:
+            set_download_directory_names({
+                str(item.get("url", "")): str(
+                    item.get("download_directory_name", "")
+                )
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True) and item.get("url")
+            })
 
     async def create_download(
         self,
@@ -553,6 +579,7 @@ class AnimeLibraryApplicationService:
         *,
         preferred_name: str = "",
         preferred_anime_name: str = "",
+        preferred_download_directory_name: str = "",
         exclude_patterns: list[str] | None = None,
         entry_limit: int = 80,
     ) -> dict[str, Any]:
@@ -605,6 +632,9 @@ class AnimeLibraryApplicationService:
                     anime_name_override=(
                         preferred_anime_name.strip() or None
                     ),
+                    download_directory_name_override=(
+                        preferred_download_directory_name.strip() or None
+                    ),
                     season=result.season,
                     episode=result.episode,
                     fansub=result.fansub,
@@ -643,6 +673,7 @@ class AnimeLibraryApplicationService:
             "url": url,
             "name": metadata.get("name", "") or preferred_name.strip(),
             "anime_name": preferred_anime_name.strip(),
+            "download_directory_name": preferred_download_directory_name.strip(),
             "tmdb_id": metadata.get("tmdb_id"),
             "poster_url": metadata.get("poster_url", ""),
             "download_path": self._settings.download_path,
