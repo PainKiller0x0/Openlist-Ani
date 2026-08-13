@@ -85,6 +85,7 @@ class AnimeLibraryIngestionPipeline:
             task_store=task_store,
             event_publisher=event_publisher,
             default_base_path=settings.download_path,
+            max_retries=settings.max_download_retries,
         )
         self.download_buffer: PipelineBuffer[PipelineContext[DownloadCandidate]] = (
             PipelineBuffer("download")
@@ -100,6 +101,9 @@ class AnimeLibraryIngestionPipeline:
 
     async def start(self) -> None:
         loaded_tasks = self.task_coordinator.load_all()
+        # Apply the current config to tasks restored from an older process run.
+        # Otherwise a task keeps the retry limit it had when it was created.
+        self.task_coordinator.update_max_retries(self.settings.max_download_retries)
         restore_stats = await self.restore()
         if loaded_tasks:
             pipeline_logger.info(
@@ -166,6 +170,23 @@ class AnimeLibraryIngestionPipeline:
             if update is not None:
                 update(interval_seconds)
 
+    def update_runtime_max_download_retries(self, max_retries: int) -> None:
+        """Apply the retry limit to the live pipeline."""
+        value = max(0, int(max_retries))
+        object.__setattr__(self.settings, "max_download_retries", value)
+        self.task_coordinator.update_max_retries(value)
+
+    def cancel_downloads_for_source(
+        self,
+        source_url: str,
+        *,
+        anime_names: set[str] | None = None,
+        reason: str,
+    ) -> int:
+        return self.task_coordinator.cancel_tasks_for_source(
+            source_url, anime_names=anime_names, reason=reason
+        )
+
     def _rss_stage(self) -> RSSStage | None:
         return next(
             (stage for stage in self._stages if isinstance(stage, RSSStage)),
@@ -219,6 +240,9 @@ class AnimeLibraryIngestionPipeline:
     def _download_retry_limit_reached(task: TaskMemento) -> bool:
         return (
             task.state in {DownloadState.PENDING, DownloadState.DOWNLOADING}
+            # retry_count is incremented only after a failed attempt, so zero
+            # must still allow the first attempt when max_retries is zero.
+            and task.retry.retry_count > 0
             and task.retry.retry_count >= task.retry.max_retries
         )
 

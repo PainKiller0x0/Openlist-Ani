@@ -121,6 +121,7 @@ class BackendApiService:
         url: str,
         *,
         name: str = "",
+        anime_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -129,6 +130,7 @@ class BackendApiService:
         return self._application_service.add_rss_url(
             url,
             name=name,
+            anime_name=anime_name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -143,6 +145,7 @@ class BackendApiService:
         url: str,
         *,
         name: str | None = None,
+        anime_name: str | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -152,6 +155,7 @@ class BackendApiService:
         return self._application_service.update_rss_subscription(
             url,
             name=name,
+            anime_name=anime_name,
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
@@ -165,6 +169,7 @@ class BackendApiService:
         *,
         url: str,
         name: str = "",
+        anime_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -174,6 +179,7 @@ class BackendApiService:
             original_url,
             url=url,
             name=name,
+            anime_name=anime_name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -185,11 +191,13 @@ class BackendApiService:
         url: str,
         *,
         preferred_name: str = "",
+        preferred_anime_name: str = "",
         exclude_patterns: str | list[str] = "",
     ) -> dict[str, object]:
         return await self._application_service.preview_rss_subscription(
             url,
             preferred_name=preferred_name,
+            preferred_anime_name=preferred_anime_name,
             exclude_patterns=normalize_exclude_patterns(exclude_patterns),
         )
 
@@ -235,6 +243,9 @@ class BackendApiService:
 
     def update_runtime_rss_interval(self, interval_seconds: int) -> None:
         self._application_service.update_runtime_rss_interval(interval_seconds)
+
+    def update_runtime_max_download_retries(self, max_retries: int) -> None:
+        self._application_service.update_runtime_max_download_retries(max_retries)
 
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.remove_rss_url(url)

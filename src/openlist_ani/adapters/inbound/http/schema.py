@@ -10,6 +10,7 @@ class AddRSSRequest(BaseModel):
 
     url: str = Field(..., description="RSS feed URL to monitor")
     name: str = Field(default="", max_length=200, description="Optional anime display name")
+    anime_name: str = Field(default="", max_length=200, description="Optional download anime_name override")
     tmdb_id: int | None = Field(default=None, description="Optional TMDB TV show id")
     season: int | None = Field(default=None, ge=0, le=99)
     exclude_patterns: str = Field(
@@ -28,6 +29,7 @@ class RSSPreviewRequest(BaseModel):
 
     url: str = Field(..., description="RSS feed URL")
     name: str = Field(default="", max_length=200, description="Optional display name")
+    anime_name: str = Field(default="", max_length=200, description="Optional download anime_name override")
     exclude_patterns: str = Field(
         default="", max_length=2000, description="Pipe-separated title exclusions"
     )
@@ -54,6 +56,7 @@ class CorrectRSSRequest(BaseModel):
     original_url: str = Field(..., description="Current persisted RSS URL")
     url: str = Field(..., description="Corrected RSS URL")
     name: str = Field(default="", max_length=200)
+    anime_name: str = Field(default="", max_length=200)
     tmdb_id: int | None = Field(default=None)
     season: int | None = Field(default=None, ge=0, le=99)
     poster_url: str = Field(default="", max_length=1000)
@@ -74,11 +77,13 @@ class UISettingsRequest(BaseModel):
     download_path: str | None = Field(default=None, max_length=1000)
     rename_format: str | None = Field(default=None, max_length=1000)
     poll_interval_seconds: int | None = Field(default=None, ge=60, le=86400)
+    max_download_retries: int | None = Field(default=None, ge=0, le=100)
 
 
 class RSSSubscriptionResponse(BaseModel):
     url: str
     name: str = ""
+    anime_name: str = ""
     enabled: bool = True
     tmdb_id: int | None = None
     poster_url: str = ""

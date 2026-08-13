@@ -66,6 +66,7 @@ class RSSSubscription(BaseModel):
 
     url: str
     name: str = ""
+    anime_name: str = ""
     enabled: bool = True
     tmdb_id: int | None = None
     poster_url: str = ""
@@ -84,6 +85,12 @@ class RSSConfig(BaseModel):
         ge=60,
         le=86400,
         description="RSS fetch interval in seconds (default: 5 minutes)",
+    )
+    max_download_retries: int = Field(
+        default=3,
+        ge=0,
+        le=100,
+        description="Maximum download retries after the first attempt",
     )
     strict: bool = (
         False  # Strict mode: filter entries whose rename stem matches existing downloads
@@ -388,6 +395,7 @@ class ConfigManager:
         url: str,
         *,
         name: str = "",
+        anime_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -403,6 +411,7 @@ class ConfigManager:
                 RSSSubscription(
                     url=url,
                     name=name.strip(),
+                    anime_name=anime_name.strip(),
                     tmdb_id=tmdb_id,
                     poster_url=poster_url.strip(),
                     season=season or 1,
@@ -413,6 +422,8 @@ class ConfigManager:
             existing.enabled = True
             if name.strip():
                 existing.name = name.strip()
+            if anime_name.strip():
+                existing.anime_name = anime_name.strip()
             if tmdb_id is not None:
                 existing.tmdb_id = tmdb_id
             if poster_url.strip():
@@ -429,6 +440,7 @@ class ConfigManager:
         url: str,
         *,
         name: str | None = None,
+        anime_name: str | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -443,6 +455,8 @@ class ConfigManager:
             return False
         if name is not None and name.strip():
             item.name = name.strip()
+        if anime_name is not None:
+            item.anime_name = anime_name.strip()
         if enabled is not None:
             item.enabled = enabled
         if tmdb_id is not None:
@@ -507,10 +521,17 @@ class ConfigManager:
             self._config.openlist.rename_format = rename_format.strip()
         self.save()
 
-    def update_rss_settings(self, *, interval_time: int | None = None) -> None:
+    def update_rss_settings(
+        self,
+        *,
+        interval_time: int | None = None,
+        max_download_retries: int | None = None,
+    ) -> None:
         """Persist RSS polling settings edited by the built-in UI."""
         if interval_time is not None:
             self._config.rss.interval_time = interval_time
+        if max_download_retries is not None:
+            self._config.rss.max_download_retries = max_download_retries
         self.save()
 
     def remove_rss_url(self, url: str) -> bool:

@@ -134,6 +134,7 @@ class AnimeLibraryApplicationService:
         url: str,
         *,
         name: str = "",
+        anime_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -147,6 +148,7 @@ class AnimeLibraryApplicationService:
             self._add_rss_url(
                 url,
                 name=name,
+                anime_name=anime_name,
                 tmdb_id=tmdb_id,
                 poster_url=poster_url,
                 season=season,
@@ -165,7 +167,13 @@ class AnimeLibraryApplicationService:
         subscriptions: list[dict[str, Any]] = []
         for item in self._get_rss_subscriptions():
             enriched = dict(item)
-            name = sanitize_filename(str(enriched.get("name", "") or "未命名订阅"))
+            name = sanitize_filename(
+                str(
+                    enriched.get("anime_name", "")
+                    or enriched.get("name", "")
+                    or "未命名订阅"
+                )
+            )
             season = int(enriched.get("season") or 1)
             enriched["download_directory"] = (
                 f"{self._settings.download_path.rstrip('/')}/{name}/Season {season}"
@@ -278,6 +286,7 @@ class AnimeLibraryApplicationService:
         url: str,
         *,
         name: str | None = None,
+        anime_name: str | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -287,6 +296,7 @@ class AnimeLibraryApplicationService:
         if not self._update_rss_subscription(
             url,
             name=name,
+            anime_name=anime_name,
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
@@ -297,7 +307,22 @@ class AnimeLibraryApplicationService:
         updated_urls = self._get_rss_urls()
         self._sync_feed_reader(updated_urls)
         state = "resumed" if enabled else "paused" if enabled is False else "updated"
-        return True, f"RSS subscription {state}: {url}", updated_urls
+        cancelled = 0
+        if enabled is False:
+            item = next(
+                (item for item in self._get_rss_subscriptions() if item.get("url") == url),
+                {},
+            )
+            cancelled = self._pipeline.cancel_downloads_for_source(
+                url,
+                anime_names={
+                    str(item.get("name", "")),
+                    str(item.get("anime_name", "")),
+                },
+                reason="RSS subscription paused",
+            )
+        suffix = f"；已停止 {cancelled} 个关联任务" if cancelled else ""
+        return True, f"RSS subscription {state}: {url}{suffix}", updated_urls
 
     def correct_rss_subscription(
         self,
@@ -305,6 +330,7 @@ class AnimeLibraryApplicationService:
         *,
         url: str,
         name: str = "",
+        anime_name: str = "",
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -331,6 +357,7 @@ class AnimeLibraryApplicationService:
             success, message, urls = self.update_rss_subscription(
                 original_url,
                 name=name,
+                anime_name=anime_name,
                 tmdb_id=tmdb_id,
                 poster_url=effective_poster_url,
                 season=season,
@@ -345,6 +372,7 @@ class AnimeLibraryApplicationService:
         added, message, _ = self.add_rss_url(
             url,
             name=name,
+            anime_name=anime_name,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -420,6 +448,9 @@ class AnimeLibraryApplicationService:
     def update_runtime_rss_interval(self, interval_seconds: int) -> None:
         self._pipeline.update_runtime_rss_interval(interval_seconds)
 
+    def update_runtime_max_download_retries(self, max_retries: int) -> None:
+        self._pipeline.update_runtime_max_download_retries(max_retries)
+
     def _sync_feed_reader(self, updated_urls: list[str] | None = None) -> None:
         """Refresh active URLs and per-RSS filters on the live reader."""
         feed_reader = self._pipeline.feed_reader
@@ -441,6 +472,13 @@ class AnimeLibraryApplicationService:
         set_global_patterns = getattr(feed_reader, "set_global_exclusion_patterns", None)
         if set_global_patterns is not None:
             set_global_patterns(self.get_global_exclude_patterns())
+        set_anime_names = getattr(feed_reader, "set_anime_names", None)
+        if set_anime_names is not None:
+            set_anime_names({
+                str(item.get("url", "")): str(item.get("anime_name", ""))
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True) and item.get("url")
+            })
 
     async def create_download(
         self,
@@ -493,17 +531,28 @@ class AnimeLibraryApplicationService:
         )
         if not known:
             return False, f"RSS URL not found: {url}", current_urls
+        item = next(
+            (item for item in known_subscriptions if str(item.get("url", "")) == url),
+            {},
+        )
+        cancelled = self._pipeline.cancel_downloads_for_source(
+            url,
+            anime_names={str(item.get("name", "")), str(item.get("anime_name", ""))},
+            reason="RSS subscription deleted",
+        )
         if not self._remove_rss_url(url):
             return False, f"RSS URL not found: {url}", current_urls
         updated_urls = self._get_rss_urls()
         self._sync_feed_reader(updated_urls)
-        return True, f"RSS URL removed: {url}", updated_urls
+        suffix = f"；已停止 {cancelled} 个关联任务" if cancelled else ""
+        return True, f"RSS URL removed: {url}{suffix}", updated_urls
 
     async def preview_rss_subscription(
         self,
         url: str,
         *,
         preferred_name: str = "",
+        preferred_anime_name: str = "",
         exclude_patterns: list[str] | None = None,
         entry_limit: int = 80,
     ) -> dict[str, Any]:
@@ -550,7 +599,12 @@ class AnimeLibraryApplicationService:
             enriched = (
                 replace(
                     release,
-                    anime_name=result.anime_name,
+                    anime_name=(
+                        preferred_anime_name.strip() or result.anime_name
+                    ),
+                    anime_name_override=(
+                        preferred_anime_name.strip() or None
+                    ),
                     season=result.season,
                     episode=result.episode,
                     fansub=result.fansub,
@@ -588,6 +642,7 @@ class AnimeLibraryApplicationService:
             "message": "RSS 已识别，请检查排除后的下载预览",
             "url": url,
             "name": metadata.get("name", "") or preferred_name.strip(),
+            "anime_name": preferred_anime_name.strip(),
             "tmdb_id": metadata.get("tmdb_id"),
             "poster_url": metadata.get("poster_url", ""),
             "download_path": self._settings.download_path,

@@ -27,6 +27,8 @@ class AnimeRelease:
 
     title: str
     download_url: str
+    source_url: str | None = None
+    anime_name_override: str | None = None
     anime_name: str | None = None
     season: int | None = None
     episode: int | None = None

@@ -135,6 +135,11 @@ async def run() -> None:
                 if item.enabled
             },
             global_exclusion_patterns=list(config.rss.filter.exclude_patterns),
+            anime_names={
+                item.url: item.anime_name
+                for item in config.rss.subscriptions
+                if item.enabled and item.anime_name
+            },
         ),
         notifier=notification_manager,
     )
@@ -421,6 +426,7 @@ def _create_pipeline_settings() -> AnimeLibraryIngestionSettings:
         download_path=config.openlist.download_path,
         rename_format=config.openlist.rename_format,
         rss_interval_seconds=config.rss.interval_time,
+        max_download_retries=config.rss.max_download_retries,
         strict_filtering=config.rss.strict,
         metadata_filter=MetadataFilterSettings(
             exclude_fansub=list(config.rss.filter.exclude_fansub),

@@ -358,7 +358,7 @@ class RSSStage(PipelineStage[None]):
             return False
 
         meta = result.result
-        entry.anime_name = meta.anime_name
+        entry.anime_name = entry.anime_name_override or meta.anime_name
         entry.season = meta.season
         entry.episode = meta.episode
         entry.quality = meta.quality
@@ -425,6 +425,11 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
                     ),
                 )
             )
+            if memento.state == DownloadState.CANCELLED:
+                download_logger.info(
+                    f"Download result ignored for cancelled task: {label}"
+                )
+                return
             memento.state = DownloadState.DOWNLOADED
             memento.downloader = downloaded.downloader_memento
             memento.pipeline = PipelineMemento(
@@ -453,6 +458,12 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
     ) -> TaskMemento | None:
         existing = self._task_registry.get_task(item.workflow_id)
         if existing is not None:
+            if existing.state in {
+                DownloadState.COMPLETED,
+                DownloadState.FAILED,
+                DownloadState.CANCELLED,
+            }:
+                return None
             return existing
 
         download_logger.warning(
@@ -478,6 +489,11 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
         memento: TaskMemento,
         error: Exception,
     ) -> None:
+        if memento.state == DownloadState.CANCELLED:
+            download_logger.info(
+                f"Retry skipped for cancelled task: {memento.release.title}"
+            )
+            return
         memento.retry.last_error = str(error)
         if memento.retry.retry_count < memento.retry.max_retries:
             memento.retry.retry_count += 1

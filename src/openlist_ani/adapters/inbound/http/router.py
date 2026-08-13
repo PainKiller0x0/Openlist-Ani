@@ -68,6 +68,7 @@ async def ui_state() -> dict:
         "openlist_url": config.openlist.url,
         "download_path": config.openlist.download_path,
         "poll_interval_seconds": config.rss.interval_time,
+        "max_download_retries": config.rss.max_download_retries,
         "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
     }
@@ -90,6 +91,7 @@ async def ui_settings() -> dict:
         "openlist_url": config.openlist.url,
         "rename_format": config.openlist.rename_format,
         "poll_interval_seconds": config.rss.interval_time,
+        "max_download_retries": config.rss.max_download_retries,
     }
 
 
@@ -128,6 +130,11 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
         if request.poll_interval_seconds is not None
         else config.rss.interval_time
     )
+    requested_max_retries = (
+        request.max_download_retries
+        if request.max_download_retries is not None
+        else config.rss.max_download_retries
+    )
     format_ok, format_error = svc.validate_rename_format(requested_format)
     if not format_ok:
         raise HTTPException(status_code=400, detail=format_error)
@@ -163,8 +170,15 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
             rename_format=requested_format,
         )
     if request.poll_interval_seconds is not None:
-        config.update_rss_settings(interval_time=requested_interval)
+        config.update_rss_settings(
+            interval_time=requested_interval,
+            max_download_retries=requested_max_retries,
+        )
         svc.update_runtime_rss_interval(requested_interval)
+        svc.update_runtime_max_download_retries(requested_max_retries)
+    elif request.max_download_retries is not None:
+        config.update_rss_settings(max_download_retries=requested_max_retries)
+        svc.update_runtime_max_download_retries(requested_max_retries)
     svc.update_global_exclude_patterns(request.global_exclude_patterns)
     config.update_llm_settings(
         provider_type=request.llm_provider_type,
@@ -202,6 +216,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
     success, message, urls = svc.add_rss_subscription(
         request.url,
         name=str(metadata.get("name", "") or request.name).strip(),
+        anime_name=(request.anime_name.strip() or request.name.strip()),
         tmdb_id=metadata.get("tmdb_id"),
         poster_url=str(metadata.get("poster_url", "") or ""),
         season=request.season or 1,
@@ -216,6 +231,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         "urls": urls,
         "preview": preview,
         "name": metadata.get("name", "") or request.name.strip(),
+        "anime_name": request.anime_name.strip() or request.name.strip(),
         "tmdb_id": metadata.get("tmdb_id"),
         "poster_url": metadata.get("poster_url", ""),
         "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
@@ -229,6 +245,7 @@ async def ui_preview_rss(request: RSSPreviewRequest) -> dict:
     preview = await svc.preview_rss_subscription(
         request.url,
         preferred_name=request.name,
+        preferred_anime_name=request.anime_name,
         exclude_patterns=request.exclude_patterns,
     )
     if not preview.get("success"):
@@ -284,6 +301,7 @@ async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
         request.original_url,
         url=request.url,
         name=request.name,
+        anime_name=request.anime_name or request.name,
         tmdb_id=request.tmdb_id,
         season=request.season,
         poster_url=request.poster_url,
