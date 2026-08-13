@@ -211,6 +211,14 @@ class BackendApiService:
     async def validate_download_path(self, path: str) -> tuple[bool, str]:
         return await self._application_service.validate_download_path(path)
 
+    async def validate_openlist_url(self, url: str) -> tuple[bool, str]:
+        return await self._application_service.validate_openlist_url(url)
+
+    async def validate_download_path_at_url(
+        self, url: str, path: str
+    ) -> tuple[bool, str]:
+        return await self._application_service.validate_download_path_at_url(url, path)
+
     def validate_rename_format(self, rename_format: str) -> tuple[bool, str]:
         return self._application_service.validate_rename_format(rename_format)
 
@@ -221,6 +229,9 @@ class BackendApiService:
             download_path=download_path,
             rename_format=rename_format,
         )
+
+    def update_runtime_openlist_url(self, url: str) -> None:
+        self._application_service.update_runtime_openlist_url(url)
 
     def update_runtime_rss_interval(self, interval_seconds: int) -> None:
         self._application_service.update_runtime_rss_interval(interval_seconds)
