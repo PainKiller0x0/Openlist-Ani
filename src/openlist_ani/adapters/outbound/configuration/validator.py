@@ -10,7 +10,7 @@ from openlist_ani.logger import FATAL_LEVEL, logger
 from .settings import BotConfig, UserConfig
 
 _SUPPORTED_RENAME_FIELDS: frozenset[str] = frozenset(
-    {"anime_name", "season", "episode", "fansub", "quality", "languages"}
+    {"anime_name", "season", "episode", "fansub", "quality", "languages", "version"}
 )
 _SUPPORTED_METADATA_PARSER_PROVIDERS: frozenset[str] = frozenset({"llm", "regex"})
 _SUPPORTED_METADATA_VALIDATOR_PROVIDERS: frozenset[str] = frozenset({"tmdb", "none"})

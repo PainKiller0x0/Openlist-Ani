@@ -68,6 +68,8 @@ class UISettingsRequest(BaseModel):
     llm_model: str | None = Field(default=None, max_length=200)
     tmdb_language: str | None = Field(default=None, max_length=30)
     metadata_parser_provider: str | None = Field(default=None, max_length=50)
+    download_path: str | None = Field(default=None, max_length=1000)
+    rename_format: str | None = Field(default=None, max_length=1000)
 
 
 class RSSSubscriptionResponse(BaseModel):

@@ -202,6 +202,20 @@ class BackendApiService:
     def global_exclude_patterns(self) -> list[str]:
         return self._application_service.get_global_exclude_patterns()
 
+    async def validate_download_path(self, path: str) -> tuple[bool, str]:
+        return await self._application_service.validate_download_path(path)
+
+    def validate_rename_format(self, rename_format: str) -> tuple[bool, str]:
+        return self._application_service.validate_rename_format(rename_format)
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._application_service.update_runtime_openlist_settings(
+            download_path=download_path,
+            rename_format=rename_format,
+        )
+
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.remove_rss_url(url)
 

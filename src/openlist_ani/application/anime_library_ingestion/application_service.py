@@ -24,6 +24,7 @@ from openlist_ani.application.anime_library_ingestion.exclusions import (
 )
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.domain.anime_release import (
+    validate_rename_format,
     ReleaseDirectoryPlanner,
     ReleaseFilenamePlanner,
 )
@@ -42,6 +43,7 @@ class ReleaseFeedSourceFactoryPort(Protocol):
 
 ResolveMagnet = Callable[..., Awaitable[Any]]
 ResolveTorrent = Callable[..., Awaitable[Any]]
+ValidateOpenListPath = Callable[[str], Awaitable[tuple[bool, str]]]
 LookupTMDBShow = Callable[[str], Awaitable[dict[str, Any] | None]]
 LookupTMDBShowByID = Callable[[int], Awaitable[dict[str, Any] | None]]
 
@@ -83,6 +85,7 @@ class AnimeLibraryApplicationService:
         update_global_exclude_patterns_func: Callable[[list[str]], None] | None = None,
         lookup_tmdb_show: LookupTMDBShow | None = None,
         lookup_tmdb_show_by_id: LookupTMDBShowByID | None = None,
+        validate_openlist_path: ValidateOpenListPath | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._metadata_parser = metadata_parser
@@ -107,6 +110,7 @@ class AnimeLibraryApplicationService:
         self._update_global_exclude_patterns = update_global_exclude_patterns_func
         self._lookup_tmdb_show = lookup_tmdb_show
         self._lookup_tmdb_show_by_id = lookup_tmdb_show_by_id
+        self._validate_openlist_path = validate_openlist_path
 
     @property
     def pipeline(self) -> AnimeLibraryIngestionPipeline:
@@ -339,6 +343,23 @@ class AnimeLibraryApplicationService:
 
     def get_global_exclude_patterns(self) -> list[str]:
         return list(normalize_exclude_patterns(self._get_global_exclude_patterns()))
+
+    async def validate_download_path(self, path: str) -> tuple[bool, str]:
+        """Check a destination against the configured OpenList instance."""
+        if self._validate_openlist_path is None:
+            return False, "当前服务未连接 OpenList，无法验证下载目录"
+        return await self._validate_openlist_path(path)
+
+    def validate_rename_format(self, rename_format: str) -> tuple[bool, str]:
+        return validate_rename_format(rename_format)
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._pipeline.update_runtime_openlist_settings(
+            download_path=download_path,
+            rename_format=rename_format,
+        )
 
     def _sync_feed_reader(self, updated_urls: list[str] | None = None) -> None:
         """Refresh active URLs and per-RSS filters on the live reader."""

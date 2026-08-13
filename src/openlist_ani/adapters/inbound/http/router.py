@@ -93,6 +93,35 @@ async def ui_settings() -> dict:
 async def ui_update_settings(request: UISettingsRequest) -> dict:
     """Persist global filters and LLM settings from the browser dialog."""
     svc = BackendApiService.get()
+
+    requested_path = (
+        request.download_path.strip()
+        if request.download_path is not None
+        else config.openlist.download_path
+    )
+    requested_format = (
+        request.rename_format.strip()
+        if request.rename_format is not None
+        else config.openlist.rename_format
+    )
+    format_ok, format_error = svc.validate_rename_format(requested_format)
+    if not format_ok:
+        raise HTTPException(status_code=400, detail=format_error)
+    if request.download_path is not None:
+        path_ok, path_result = await svc.validate_download_path(requested_path)
+        if not path_ok:
+            raise HTTPException(status_code=400, detail=path_result)
+        requested_path = path_result
+
+    if request.download_path is not None or request.rename_format is not None:
+        config.update_openlist_settings(
+            download_path=requested_path,
+            rename_format=requested_format,
+        )
+        svc.update_runtime_openlist_settings(
+            download_path=requested_path,
+            rename_format=requested_format,
+        )
     svc.update_global_exclude_patterns(request.global_exclude_patterns)
     config.update_llm_settings(
         provider_type=request.llm_provider_type,

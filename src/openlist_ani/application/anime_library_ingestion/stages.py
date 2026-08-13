@@ -106,6 +106,14 @@ class RSSStage(PipelineStage[None]):
     async def process_item(self, item: None) -> None:
         return None
 
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._filter_chain.update_runtime_openlist_settings(
+            download_path=download_path,
+            rename_format=rename_format,
+        )
+
     async def process_batch(self) -> None:
         try:
             async with self._scan_lock:
@@ -502,6 +510,11 @@ class RenameStage(PipelineStage[PipelineContext[DownloadedFile]]):
         self._task_store = task_store
         self._task_lookup = task_lookup
         self._filename_planner = filename_planner
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._filename_planner.update_rename_format(rename_format)
 
     async def process_item(self, item: PipelineContext[DownloadedFile]) -> None:
         downloaded = item.payload

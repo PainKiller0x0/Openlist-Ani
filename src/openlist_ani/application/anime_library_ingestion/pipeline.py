@@ -146,6 +146,18 @@ class AnimeLibraryIngestionPipeline:
             "message": "RSS stage is not enabled",
         }
 
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        """Apply validated OpenList settings to new runtime work immediately."""
+        object.__setattr__(self.settings, "download_path", download_path)
+        object.__setattr__(self.settings, "rename_format", rename_format)
+        self.task_coordinator.update_default_base_path(download_path)
+        for stage in self._stages:
+            update = getattr(stage, "update_runtime_openlist_settings", None)
+            if update is not None:
+                update(download_path=download_path, rename_format=rename_format)
+
     def _rss_stage(self) -> RSSStage | None:
         return next(
             (stage for stage in self._stages if isinstance(stage, RSSStage)),

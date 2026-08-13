@@ -247,6 +247,21 @@ class OpenListClient:
             logger.warning(f"Failed to list files at {path}: {msg}")
             return None
 
+    async def validate_path(self, path: str) -> tuple[bool, str]:
+        """Check that an OpenList directory is reachable and listable."""
+        normalized = path.strip()
+        if not normalized.startswith("/"):
+            return False, "下载根目录必须是 OpenList 的绝对路径，以 / 开头"
+        normalized = "/" + normalized.lstrip("/")
+        if len(normalized) > 1:
+            normalized = normalized.rstrip("/")
+        if "\x00" in normalized:
+            return False, "下载根目录包含非法字符"
+        files = await self.list_files(normalized)
+        if files is None:
+            return False, f"OpenList 无法访问目录：{normalized}"
+        return True, normalized
+
     async def rename_file(self, full_path: str, new_name: str) -> bool:
         """Rename a file at *full_path* to *new_name*."""
         if not self.token:

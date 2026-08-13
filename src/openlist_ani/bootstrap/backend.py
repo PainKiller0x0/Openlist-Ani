@@ -165,6 +165,7 @@ async def run() -> None:
             lookup_tmdb_show_by_id=lambda tmdb_id: _lookup_tmdb_show_by_id(
                 tmdb_client, tmdb_id
             ),
+            validate_openlist_path=openlist_client.validate_path,
         )
     )
 

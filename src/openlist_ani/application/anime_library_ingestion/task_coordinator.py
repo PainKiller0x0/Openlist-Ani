@@ -61,6 +61,10 @@ class TaskCoordinator:
     def atomic_flush(self) -> None:
         self._task_store.atomic_flush()
 
+    def update_default_base_path(self, base_path: str) -> None:
+        """Use a new destination for tasks reserved after this point."""
+        self._default_base_path = base_path
+
     async def reserve_download_task(
         self,
         release: AnimeRelease,

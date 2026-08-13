@@ -51,7 +51,7 @@ url = "http://localhost:5244"
 token = ""
 download_path = "/"
 offline_download_tool = "qBittorrent"  # Supported: aria2, qBittorrent, PikPak, 115 Cloud, 115 Open, 123Pan, 123 Open, SimpleHttp, Thunder, ThunderBrowser, ThunderX, Transmission
-rename_format = "{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}"
+rename_format = "{anime_name} - S{season:02d}E{episode:02d}"
 
 [llm]
 openai_api_key = ""  # Required for metadata_parser.provider = "llm" and for assistant.enabled = true

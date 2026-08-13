@@ -109,6 +109,15 @@ class FilterChain:
         ]
         return ", ".join(parts)
 
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        """Forward runtime settings to filters that depend on them."""
+        for release_filter in self._filters:
+            update = getattr(release_filter, "update_runtime_openlist_settings", None)
+            if update is not None:
+                update(download_path=download_path, rename_format=rename_format)
+
 
 def _filter_log_name(release_filter: ReleaseFilter) -> str:
     name = type(release_filter).__name__

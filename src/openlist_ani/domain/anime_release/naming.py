@@ -8,6 +8,9 @@ import re
 from .model import AnimeRelease
 
 
+DEFAULT_RENAME_FORMAT = "{anime_name} - S{season:02d}E{episode:02d}"
+
+
 def sanitize_filename(name: str) -> str:
     """Remove or replace characters that are invalid in common filesystems."""
     return re.sub(r'[<>:"/\\|?*]', " ", name).strip()
@@ -57,6 +60,7 @@ def format_release_stem(
     context["quality"] = str(quality) if quality is not None else ""
     context["languages"] = _format_languages(languages)
     version = version or 1
+    context["version"] = version
 
     try:
         stem = rename_format.format(**context).strip()
@@ -79,10 +83,39 @@ def _format_languages(languages: object | None) -> str:
     return str(languages)
 
 
+def validate_rename_format(rename_format: str) -> tuple[bool, str]:
+    """Validate a user-provided rename format before persisting it."""
+    if not isinstance(rename_format, str) or not rename_format.strip():
+        return False, "重命名规则不能为空"
+
+    sample = {
+        "anime_name": "示例番剧",
+        "season": 1,
+        "episode": 1,
+        "fansub": "字幕组",
+        "quality": "1080p",
+        "languages": "简",
+        "version": 1,
+    }
+    try:
+        rendered = rename_format.format(**sample).strip()
+    except (KeyError, ValueError, IndexError, TypeError) as error:
+        return False, f"重命名规则格式错误：{error}"
+
+    if not rendered:
+        return False, "重命名规则渲染后为空"
+    if any(char in rendered for char in ("/", "\\", "\x00")):
+        return False, "重命名规则不能生成目录分隔符或空字符"
+    return True, ""
+
+
 class ReleaseFilenamePlanner:
     """Build final filenames from release metadata and a configured format."""
 
     def __init__(self, rename_format: str) -> None:
+        self._rename_format = rename_format
+
+    def update_rename_format(self, rename_format: str) -> None:
         self._rename_format = rename_format
 
     def filename(self, release: AnimeRelease, source_filename: str) -> str:

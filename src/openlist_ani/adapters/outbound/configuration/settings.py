@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 from tomlkit import dumps as toml_dumps
 
+from openlist_ani.domain.anime_release import DEFAULT_RENAME_FORMAT
 from openlist_ani.integrations.openlist import normalize_offline_download_tool_name
 from openlist_ani.logger import FATAL_LEVEL, logger
 
@@ -102,9 +103,7 @@ class OpenListConfig(BaseModel):
     token: str = ""
     download_path: str = "/"
     offline_download_tool: str = "qBittorrent"
-    rename_format: str = (
-        "{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}"
-    )
+    rename_format: str = DEFAULT_RENAME_FORMAT
 
     @field_validator("offline_download_tool", mode="before")
     @classmethod
@@ -477,6 +476,19 @@ class ConfigManager:
             self._config.llm.tmdb_language = tmdb_language.strip()
         if metadata_parser_provider is not None and metadata_parser_provider.strip():
             self._config.metadata_parser.provider = metadata_parser_provider.strip()
+        self.save()
+
+    def update_openlist_settings(
+        self,
+        *,
+        download_path: str | None = None,
+        rename_format: str | None = None,
+    ) -> None:
+        """Persist the validated OpenList destination and rename format."""
+        if download_path is not None:
+            self._config.openlist.download_path = download_path.strip()
+        if rename_format is not None:
+            self._config.openlist.rename_format = rename_format.strip()
         self.save()
 
     def remove_rss_url(self, url: str) -> bool:
