@@ -100,6 +100,19 @@ class BackendApiService:
             url, preferred_name
         )
 
+    async def refresh_rss_subscription(
+        self,
+        url: str,
+        *,
+        preferred_name: str = "",
+        preferred_tmdb_id: int | None = None,
+    ) -> dict[str, object]:
+        return await self._application_service.refresh_rss_subscription(
+            url,
+            preferred_name=preferred_name,
+            preferred_tmdb_id=preferred_tmdb_id,
+        )
+
     def add_rss_subscription(
         self,
         url: str,
@@ -121,9 +134,15 @@ class BackendApiService:
         *,
         name: str | None = None,
         enabled: bool | None = None,
+        tmdb_id: int | None = None,
+        poster_url: str | None = None,
     ) -> tuple[bool, str, list[str]]:
         return self._application_service.update_rss_subscription(
-            url, name=name, enabled=enabled
+            url,
+            name=name,
+            enabled=enabled,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
         )
 
     def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:

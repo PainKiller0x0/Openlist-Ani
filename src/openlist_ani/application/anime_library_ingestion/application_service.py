@@ -35,6 +35,7 @@ class ReleaseFeedSourceFactoryPort(Protocol):
 ResolveMagnet = Callable[..., Awaitable[Any]]
 ResolveTorrent = Callable[..., Awaitable[Any]]
 LookupTMDBShow = Callable[[str], Awaitable[dict[str, Any] | None]]
+LookupTMDBShowByID = Callable[[int], Awaitable[dict[str, Any] | None]]
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class AnimeLibraryApplicationService:
         get_rss_subscriptions: Callable[[], list[dict[str, Any]]] | None = None,
         update_rss_subscription_func: Callable[..., bool] | None = None,
         lookup_tmdb_show: LookupTMDBShow | None = None,
+        lookup_tmdb_show_by_id: LookupTMDBShowByID | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._metadata_parser = metadata_parser
@@ -90,6 +92,7 @@ class AnimeLibraryApplicationService:
             lambda _url, **_kwargs: False
         )
         self._lookup_tmdb_show = lookup_tmdb_show
+        self._lookup_tmdb_show_by_id = lookup_tmdb_show_by_id
 
     @property
     def pipeline(self) -> AnimeLibraryIngestionPipeline:
@@ -158,7 +161,12 @@ class AnimeLibraryApplicationService:
                 logger.debug(f"Subscription metadata inference failed: {e}")
 
         tmdb = None
-        if self._lookup_tmdb_show and inferred_name:
+        if tmdb_id is not None and self._lookup_tmdb_show_by_id:
+            try:
+                tmdb = await self._lookup_tmdb_show_by_id(tmdb_id)
+            except Exception as e:
+                logger.debug(f"TMDB id lookup failed for {tmdb_id}: {e}")
+        if tmdb is None and self._lookup_tmdb_show and inferred_name:
             try:
                 tmdb = await self._lookup_tmdb_show(inferred_name)
             except Exception as e:
@@ -175,14 +183,57 @@ class AnimeLibraryApplicationService:
             "poster_url": poster_url,
         }
 
+    async def refresh_rss_subscription(
+        self,
+        url: str,
+        *,
+        preferred_name: str = "",
+        preferred_tmdb_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Resolve and persist metadata for an existing subscription."""
+        metadata = await self.resolve_rss_subscription(url, preferred_name)
+        tmdb_id = preferred_tmdb_id or metadata.get("tmdb_id")
+        poster_url = str(metadata.get("poster_url", "") or "")
+        resolved_name = str(metadata.get("name", "") or preferred_name).strip()
+
+        if preferred_tmdb_id is not None and self._lookup_tmdb_show_by_id:
+            details = await self._lookup_tmdb_show_by_id(preferred_tmdb_id)
+            if details:
+                resolved_name = str(details.get("name", "") or resolved_name)
+                poster_url = str(details.get("poster_url", "") or poster_url)
+
+        if not self._update_rss_subscription(
+            url,
+            name=resolved_name,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+        ):
+            return {"success": False, "error": f"RSS URL not found: {url}"}
+
+        return {
+            "success": True,
+            "url": url,
+            "name": resolved_name,
+            "tmdb_id": tmdb_id,
+            "poster_url": poster_url,
+        }
+
     def update_rss_subscription(
         self,
         url: str,
         *,
         name: str | None = None,
         enabled: bool | None = None,
+        tmdb_id: int | None = None,
+        poster_url: str | None = None,
     ) -> tuple[bool, str, list[str]]:
-        if not self._update_rss_subscription(url, name=name, enabled=enabled):
+        if not self._update_rss_subscription(
+            url,
+            name=name,
+            enabled=enabled,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+        ):
             return False, f"RSS URL not found: {url}", self._get_rss_urls()
         updated_urls = self._get_rss_urls()
         feed_reader = self._pipeline.feed_reader

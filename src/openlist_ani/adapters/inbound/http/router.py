@@ -111,6 +111,20 @@ async def ui_toggle_rss(request: ToggleRSSRequest) -> dict:
     return {"success": True, "message": message, "urls": urls}
 
 
+@router.post("/ui/rss/metadata")
+async def ui_refresh_rss_metadata(request: AddRSSRequest) -> dict:
+    """Re-identify an existing RSS subscription and persist its metadata."""
+    svc = BackendApiService.get()
+    result = await svc.refresh_rss_subscription(
+        request.url,
+        preferred_name=request.name,
+        preferred_tmdb_id=request.tmdb_id,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail=result.get("error", "RSS 不存在"))
+    return result
+
+
 @router.delete("/ui/rss")
 async def ui_remove_rss(request: AddRSSRequest) -> dict:
     """Remove an RSS source and stop monitoring it immediately."""

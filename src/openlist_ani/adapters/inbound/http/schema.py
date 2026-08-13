@@ -10,6 +10,7 @@ class AddRSSRequest(BaseModel):
 
     url: str = Field(..., description="RSS feed URL to monitor")
     name: str = Field(default="", max_length=200, description="Optional anime display name")
+    tmdb_id: int | None = Field(default=None, description="Optional TMDB TV show id")
 
 
 class ToggleRSSRequest(BaseModel):

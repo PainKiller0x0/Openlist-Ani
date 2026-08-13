@@ -148,6 +148,9 @@ async def run() -> None:
             ],
             update_rss_subscription_func=config.update_rss_subscription,
             lookup_tmdb_show=lambda name: _lookup_tmdb_show(tmdb_client, name),
+            lookup_tmdb_show_by_id=lambda tmdb_id: _lookup_tmdb_show_by_id(
+                tmdb_client, tmdb_id
+            ),
         )
     )
 
@@ -303,6 +306,21 @@ async def _lookup_tmdb_show(client, name: str) -> dict[str, object] | None:
     return {
         "id": item.get("id"),
         "name": item.get("name") or item.get("original_name") or name,
+        "poster_url": (
+            f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
+        ),
+    }
+
+
+async def _lookup_tmdb_show_by_id(client, tmdb_id: int) -> dict[str, object] | None:
+    """Return the canonical name and poster for a known TMDB TV id."""
+    details = await client.get_tv_show_details(tmdb_id)
+    if not details:
+        return None
+    poster_path = details.get("poster_path") or ""
+    return {
+        "id": tmdb_id,
+        "name": details.get("name") or details.get("original_name") or "",
         "poster_url": (
             f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
         ),
