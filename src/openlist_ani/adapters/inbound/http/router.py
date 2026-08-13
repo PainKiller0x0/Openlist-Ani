@@ -15,6 +15,7 @@ from openlist_ani.logger import logger
 from .schema import (
     AddRSSRequest,
     AddRSSResponse,
+    CorrectRSSRequest,
     CreateDownloadRequest,
     CreateDownloadResponse,
     DownloadListResponse,
@@ -29,6 +30,7 @@ from .schema import (
     GlobalRSSFilterRequest,
     RSSPreviewRequest,
     ToggleRSSRequest,
+    UISettingsRequest,
 )
 from .service import BackendApiService
 from openlist_ani.application.anime_library_ingestion.exclusions import (
@@ -66,6 +68,44 @@ async def ui_state() -> dict:
         "download_path": config.openlist.download_path,
         "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
+    }
+
+
+@router.get("/ui/settings")
+async def ui_settings() -> dict:
+    """Return settings safe for the browser settings dialog."""
+    return {
+        "global_exclude_patterns": BackendApiService.get().global_exclude_patterns(),
+        "llm": {
+            "provider_type": config.llm.provider_type,
+            "base_url": config.llm.openai_base_url,
+            "model": config.llm.openai_model,
+            "api_key_configured": bool(config.llm.openai_api_key),
+            "tmdb_language": config.llm.tmdb_language,
+            "metadata_parser_provider": config.metadata_parser.provider,
+        },
+        "download_path": config.openlist.download_path,
+        "rename_format": config.openlist.rename_format,
+    }
+
+
+@router.post("/ui/settings")
+async def ui_update_settings(request: UISettingsRequest) -> dict:
+    """Persist global filters and LLM settings from the browser dialog."""
+    svc = BackendApiService.get()
+    svc.update_global_exclude_patterns(request.global_exclude_patterns)
+    config.update_llm_settings(
+        provider_type=request.llm_provider_type,
+        api_key=request.llm_api_key or None,
+        base_url=request.llm_base_url,
+        model=request.llm_model,
+        tmdb_language=request.tmdb_language,
+        metadata_parser_provider=request.metadata_parser_provider,
+    )
+    return {
+        "success": True,
+        "message": "设置已保存；LLM/解析器相关修改将在服务重启后生效。",
+        "requires_restart": True,
     }
 
 
@@ -161,6 +201,23 @@ async def ui_update_rss_exclude(request: AddRSSRequest) -> dict:
         "urls": urls,
         "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
     }
+
+
+@router.post("/ui/rss/correct")
+async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
+    """Correct an existing RSS URL and its metadata in one operation."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.correct_rss_subscription(
+        request.original_url,
+        url=request.url,
+        name=request.name,
+        tmdb_id=request.tmdb_id,
+        poster_url=request.poster_url,
+        exclude_patterns=request.exclude_patterns,
+    )
+    if not success:
+        raise HTTPException(status_code=409, detail=message)
+    return {"success": True, "message": message, "urls": urls}
 
 
 @router.post("/ui/rss/metadata")

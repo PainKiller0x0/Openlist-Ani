@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Protocol
 
 from openlist_ani.application.anime_library_ingestion.pipeline import (
@@ -23,6 +23,10 @@ from openlist_ani.application.anime_library_ingestion.exclusions import (
     normalize_exclude_patterns,
 )
 from openlist_ani.domain.anime_release import AnimeRelease
+from openlist_ani.domain.anime_release import (
+    ReleaseDirectoryPlanner,
+    ReleaseFilenamePlanner,
+)
 from openlist_ani.domain.download_task.memento import TaskMemento
 from openlist_ani.domain.download_task.task import DownloadState
 from openlist_ani.logger import logger
@@ -142,32 +146,38 @@ class AnimeLibraryApplicationService:
         return self._get_rss_subscriptions()
 
     async def resolve_rss_subscription(
-        self, url: str, preferred_name: str = ""
+        self,
+        url: str,
+        preferred_name: str = "",
+        *,
+        entries: list[AnimeRelease] | None = None,
+        validated_results: list[ParseResult] | None = None,
     ) -> dict[str, Any]:
         """Infer a display name and optional TMDB poster from the feed."""
-        parsed = await self.parse_rss(url, limit=5)
-        if not parsed.success:
-            return {"name": preferred_name.strip(), "error": parsed.message}
+        if entries is None:
+            parsed = await self.parse_rss(url, limit=5)
+            if not parsed.success:
+                return {"name": preferred_name.strip(), "error": parsed.message}
+            entries = parsed.entries or []
+
+        entries = entries[:5]
+        if validated_results is None:
+            validated_results = await self._parse_and_validate_metadata(entries)
 
         inferred_name = preferred_name.strip()
         tmdb_id: int | None = None
-        for release in parsed.entries or []:
+        for release, parsed_result in zip(entries, validated_results):
             if not inferred_name and release.anime_name:
                 inferred_name = release.anime_name.strip()
-            try:
-                parse_results = await self._metadata_parser.parse([release])
-                validated = await self._metadata_validator.validate(parse_results)
-                parsed_result = validated[0] if validated else None
-                result = parsed_result.result if parsed_result else None
-                if parsed_result and parsed_result.success and result is not None:
-                    inferred_name = inferred_name or result.anime_name.strip()
-                    tmdb_id = result.tmdb_id
-                    if result.anime_name.strip() and not preferred_name.strip():
-                        inferred_name = result.anime_name.strip()
-                    if tmdb_id is not None:
-                        break
-            except Exception as e:
-                logger.debug(f"Subscription metadata inference failed: {e}")
+            result = parsed_result.result if parsed_result.success else None
+            if result is None:
+                continue
+            inferred_name = inferred_name or result.anime_name.strip()
+            tmdb_id = result.tmdb_id
+            if result.anime_name.strip() and not preferred_name.strip():
+                inferred_name = result.anime_name.strip()
+            if tmdb_id is not None:
+                break
 
         tmdb = None
         if tmdb_id is not None and self._lookup_tmdb_show_by_id:
@@ -250,6 +260,68 @@ class AnimeLibraryApplicationService:
         self._sync_feed_reader(updated_urls)
         state = "resumed" if enabled else "paused" if enabled is False else "updated"
         return True, f"RSS subscription {state}: {url}", updated_urls
+
+    def correct_rss_subscription(
+        self,
+        original_url: str,
+        *,
+        url: str,
+        name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+        exclude_patterns: list[str] | None = None,
+    ) -> tuple[bool, str, list[str]]:
+        """Update a subscription in place, or replace it with a new URL."""
+        original_url = original_url.strip()
+        url = url.strip()
+        subscriptions = self._get_rss_subscriptions()
+        original = next(
+            (item for item in subscriptions if str(item.get("url", "")) == original_url),
+            None,
+        )
+        if original is None:
+            return False, f"RSS URL not found: {original_url}", self._get_rss_urls()
+        if not url:
+            return False, "RSS URL cannot be empty", self._get_rss_urls()
+
+        normalized = normalize_exclude_patterns(exclude_patterns)
+        if url == original_url:
+            effective_poster_url = poster_url.strip() or str(
+                original.get("poster_url", "") or ""
+            )
+            success, message, urls = self.update_rss_subscription(
+                original_url,
+                name=name,
+                tmdb_id=tmdb_id,
+                poster_url=effective_poster_url,
+                exclude_patterns=normalized,
+            )
+            return success, "RSS 已修正并保存" if success else message, urls
+
+        if any(str(item.get("url", "")) == url for item in subscriptions):
+            return False, f"RSS URL already exists: {url}", self._get_rss_urls()
+
+        enabled = bool(original.get("enabled", True))
+        added, message, _ = self.add_rss_url(
+            url,
+            name=name,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+            exclude_patterns=normalized,
+        )
+        if not added:
+            return False, message, self._get_rss_urls()
+        if not enabled:
+            self.update_rss_subscription(url, enabled=False)
+        if not self._remove_rss_url(original_url):
+            # Do not leave a duplicate source behind if the old record could
+            # not be removed after the replacement was persisted.
+            self._remove_rss_url(url)
+            self._sync_feed_reader()
+            return False, f"RSS URL could not be replaced: {original_url}", self._get_rss_urls()
+        updated_urls = self._get_rss_urls()
+        self._sync_feed_reader(updated_urls)
+        return True, "RSS 已修正并替换保存", updated_urls
 
     def update_global_exclude_patterns(
         self, patterns: list[str]
@@ -360,7 +432,6 @@ class AnimeLibraryApplicationService:
         if not parsed.success:
             return {"success": False, "message": parsed.message}
 
-        metadata = await self.resolve_rss_subscription(url, preferred_name)
         global_patterns = self.get_global_exclude_patterns()
         local_patterns = normalize_exclude_patterns(exclude_patterns)
         combined_patterns = list(dict.fromkeys(global_patterns + local_patterns))
@@ -368,22 +439,68 @@ class AnimeLibraryApplicationService:
             parsed.entries or [], combined_patterns
         )
 
+        # Parse a bounded preview batch once.  This result is reused for the
+        # subscription identity and rename/directory preview, avoiding the
+        # previous N serial LLM calls plus a second RSS fetch.
+        preview_limit = min(entry_limit, 24)
+        preview_candidates = (accepted or (parsed.entries or []))[:preview_limit]
+        validated_preview = await self._parse_and_validate_metadata(preview_candidates)
+        metadata = await self.resolve_rss_subscription(
+            url,
+            preferred_name,
+            entries=preview_candidates,
+            validated_results=validated_preview,
+        )
+
+        validated_by_title = {
+            result.release_title: result
+            for result in validated_preview
+            if result.release_title
+        }
+        filename_planner = ReleaseFilenamePlanner(self._settings.rename_format)
+        directory_planner = ReleaseDirectoryPlanner()
+
         excluded_by_id = {
             id(release): pattern for release, pattern in excluded
         }
 
         def entry_payload(release: AnimeRelease) -> dict[str, Any]:
-            return {
+            parsed_result = validated_by_title.get(release.title)
+            result = parsed_result.result if parsed_result and parsed_result.success else None
+            enriched = (
+                replace(
+                    release,
+                    anime_name=result.anime_name,
+                    season=result.season,
+                    episode=result.episode,
+                    fansub=result.fansub,
+                    quality=result.quality,
+                    languages=result.languages,
+                    version=result.version,
+                )
+                if result is not None
+                else release
+            )
+            payload = {
                 "title": release.title,
                 "download_url": release.download_url,
-                "anime_name": release.anime_name,
-                "episode": release.episode,
-                "fansub": release.fansub,
-                "quality": release.quality.value if release.quality else None,
-                "languages": [lang.value for lang in (release.languages or [])],
+                "anime_name": enriched.anime_name,
+                "season": enriched.season,
+                "episode": enriched.episode,
+                "fansub": enriched.fansub,
+                "quality": enriched.quality.value if enriched.quality else None,
+                "languages": [lang.value for lang in (enriched.languages or [])],
                 "excluded": id(release) in excluded_by_id,
                 "matched_pattern": excluded_by_id.get(id(release)),
+                "llm_parsed": result is not None,
             }
+            if result is not None:
+                payload["tmdb_id"] = result.tmdb_id
+                payload["rename_preview"] = filename_planner.stem(enriched)
+                payload["download_directory"] = directory_planner.target_directory_path(
+                    self._settings.download_path, enriched
+                )
+            return payload
 
         ordered = [*accepted, *(release for release, _ in excluded)]
         return {
@@ -393,6 +510,8 @@ class AnimeLibraryApplicationService:
             "name": metadata.get("name", "") or preferred_name.strip(),
             "tmdb_id": metadata.get("tmdb_id"),
             "poster_url": metadata.get("poster_url", ""),
+            "download_path": self._settings.download_path,
+            "rename_format": self._settings.rename_format,
             "global_exclude_patterns": global_patterns,
             "exclude_patterns": local_patterns,
             "total": len(parsed.entries or []),
@@ -401,6 +520,47 @@ class AnimeLibraryApplicationService:
             "entries": [entry_payload(release) for release in ordered[:entry_limit]],
             "truncated": len(ordered) > entry_limit,
         }
+
+    async def _parse_and_validate_metadata(
+        self, entries: list[AnimeRelease]
+    ) -> list[ParseResult]:
+        """Parse a preview batch, validating only when identity is missing.
+
+        The LLM title parser already returns a TMDB id for the normal case.
+        Re-running the full TMDB identity/episode pipeline for every preview
+        entry adds several network/LLM round trips without changing the
+        rename or directory preview.  Keep that pipeline as a correctness
+        fallback for parsers that cannot provide an id.
+        """
+        if not entries:
+            return []
+        try:
+            parsed = await self._metadata_parser.parse(entries)
+            missing_identity = [
+                result
+                for result in parsed
+                if result.success
+                and result.result is not None
+                and result.result.tmdb_id is None
+            ]
+            if not missing_identity:
+                return parsed
+            validated_missing = await self._metadata_validator.validate(missing_identity)
+            validated_by_title = {
+                result.release_title: result
+                for result in validated_missing
+                if result.release_title
+            }
+            return [
+                validated_by_title.get(result.release_title, result)
+                for result in parsed
+            ]
+        except Exception as error:
+            logger.debug(f"RSS metadata preview failed: {error}")
+            return [
+                ParseResult(success=False, release_title=entry.title, error=str(error))
+                for entry in entries
+            ]
 
     async def parse_rss(
         self,

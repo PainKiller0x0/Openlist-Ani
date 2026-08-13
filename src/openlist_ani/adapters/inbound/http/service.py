@@ -155,6 +155,25 @@ class BackendApiService:
             exclude_patterns=exclude_patterns,
         )
 
+    def correct_rss_subscription(
+        self,
+        original_url: str,
+        *,
+        url: str,
+        name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+        exclude_patterns: str | list[str] = "",
+    ) -> tuple[bool, str, list[str]]:
+        return self._application_service.correct_rss_subscription(
+            original_url,
+            url=url,
+            name=name,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+            exclude_patterns=normalize_exclude_patterns(exclude_patterns),
+        )
+
     async def preview_rss_subscription(
         self,
         url: str,

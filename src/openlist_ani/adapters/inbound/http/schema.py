@@ -47,6 +47,29 @@ class ToggleRSSRequest(BaseModel):
     enabled: bool = Field(..., description="Whether the subscription should keep polling")
 
 
+class CorrectRSSRequest(BaseModel):
+    """Request body for correcting an existing RSS subscription."""
+
+    original_url: str = Field(..., description="Current persisted RSS URL")
+    url: str = Field(..., description="Corrected RSS URL")
+    name: str = Field(default="", max_length=200)
+    tmdb_id: int | None = Field(default=None)
+    poster_url: str = Field(default="", max_length=1000)
+    exclude_patterns: str = Field(default="", max_length=2000)
+
+
+class UISettingsRequest(BaseModel):
+    """Request body for the built-in settings dialog."""
+
+    global_exclude_patterns: str = Field(default="", max_length=4000)
+    llm_provider_type: str | None = Field(default=None, max_length=50)
+    llm_api_key: str | None = Field(default=None, max_length=500)
+    llm_base_url: str | None = Field(default=None, max_length=1000)
+    llm_model: str | None = Field(default=None, max_length=200)
+    tmdb_language: str | None = Field(default=None, max_length=30)
+    metadata_parser_provider: str | None = Field(default=None, max_length=50)
+
+
 class RSSSubscriptionResponse(BaseModel):
     url: str
     name: str = ""

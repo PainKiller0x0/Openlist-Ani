@@ -450,6 +450,35 @@ class ConfigManager:
         self._config.rss.filter.exclude_patterns = list(exclude_patterns)
         self.save()
 
+    def update_llm_settings(
+        self,
+        *,
+        provider_type: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        tmdb_language: str | None = None,
+        metadata_parser_provider: str | None = None,
+    ) -> None:
+        """Persist the LLM/metadata settings edited by the built-in UI.
+
+        An omitted API key keeps the existing secret, so opening the settings
+        page never requires returning the key to the browser.
+        """
+        if provider_type is not None and provider_type.strip():
+            self._config.llm.provider_type = provider_type.strip()
+        if api_key is not None and api_key.strip():
+            self._config.llm.openai_api_key = api_key.strip()
+        if base_url is not None and base_url.strip():
+            self._config.llm.openai_base_url = base_url.strip().rstrip("/")
+        if model is not None and model.strip():
+            self._config.llm.openai_model = model.strip()
+        if tmdb_language is not None and tmdb_language.strip():
+            self._config.llm.tmdb_language = tmdb_language.strip()
+        if metadata_parser_provider is not None and metadata_parser_provider.strip():
+            self._config.metadata_parser.provider = metadata_parser_provider.strip()
+        self.save()
+
     def remove_rss_url(self, url: str) -> bool:
         """Remove an RSS URL from configuration."""
         before = len(self._config.rss.subscriptions)
