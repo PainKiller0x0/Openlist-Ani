@@ -12,6 +12,7 @@ INDEX_HTML = r"""<!doctype html>
     input[type=number]{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#0c1426;color:var(--text);outline:none}
     .log-panel{margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:10px;background:#0d1629}.log-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.runtime-logs{max-height:300px;overflow:auto;margin:10px 0 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:#091020;color:#d7e4fb;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
     .grid{align-items:start}.compact-card{padding:16px;margin:16px 0}.compact-card label{margin:8px 0 4px}.compact-card input[type=file],.compact-card input[type=text]{padding:8px 10px}.compact-card .note{padding:8px 10px;margin-top:10px!important}.compact-card .actions{margin-top:10px}.compact-card ul{margin-top:4px;max-height:220px;overflow:auto}.compact-card li{padding:6px 0}
+    main{margin:20px auto 40px}header{margin-bottom:12px}.card{padding:16px;margin:12px 0}.grid{gap:12px}.runtime{margin:12px 0;padding:10px 12px}.metrics{gap:8px;margin-top:10px}.metric{padding:8px}.feed{gap:10px;padding:10px 0}.feed-poster{width:56px;height:80px}label{margin:10px 0 4px}input[type=url],input[type=text],input[type=password],input[type=file],input[type=number]{padding:9px 10px}button{padding:8px 12px}.mikan-results,.mikan-groups{max-height:220px}
   </style>
 </head>
 <body>
@@ -20,6 +21,8 @@ INDEX_HTML = r"""<!doctype html>
     <div><h1>OpenList-Ani 追番</h1><p class="muted">订阅 RSS，自动检查新集数；需要补旧番时也可以直接上传种子。</p></div>
     <div class="top-actions"><button class="secondary" onclick="openSettings()">设置</button><button class="secondary" onclick="refresh()">刷新状态</button><a href="/docs" target="_blank">API 文档</a></div>
   </header>
+
+  <section class="card" id="mikanHome" hidden><div id="mikanHomeMount"></div></section>
 
   <section class="card">
     <div class="top-actions" style="justify-content:space-between"><div><h2>RSS 订阅</h2><p class="muted small">先识别预览，再确认保存；已有订阅可用“修正 RSS”重新处理。</p></div><button id="scanBtn" onclick="scanNow()">立即扫描</button></div>
@@ -35,8 +38,6 @@ INDEX_HTML = r"""<!doctype html>
     <div id="rssStatus" class="status"></div>
     <label>已添加的订阅</label><div id="rssList"><div class="muted">加载中…</div></div>
   </section>
-
-  <section class="card" id="mikanHome" hidden><div id="mikanHomeMount"></div></section>
 
   <div class="grid">
     <section class="card compact-card">

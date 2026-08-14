@@ -14,6 +14,7 @@ def test_mikan_search_panel_is_mounted_on_home_page():
     assert 'id="mikanHomeMount"' in INDEX_HTML
     assert "function relocateMikanPanel" in INDEX_HTML
     assert 'id="settingsMikanBaseUrl"' in INDEX_HTML
+    assert INDEX_HTML.index('id="mikanHome"') < INDEX_HTML.index("<h2>RSS 订阅</h2>")
 
 
 def test_mikan_rss_url_uses_configured_site_and_group():
