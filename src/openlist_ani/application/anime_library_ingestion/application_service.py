@@ -546,6 +546,10 @@ class AnimeLibraryApplicationService:
     async def scan_rss_now(self) -> dict[str, object]:
         return await self._pipeline.scan_rss_now()
 
+    def schedule_rss_scan_for_url(self, source_url: str) -> bool:
+        """Start a background targeted scan after a subscription is saved."""
+        return self._pipeline.schedule_rss_scan_for_url(source_url)
+
     def rss_status(self) -> dict[str, object]:
         return self._pipeline.rss_status()
 

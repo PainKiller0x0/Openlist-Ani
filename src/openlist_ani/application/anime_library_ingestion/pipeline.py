@@ -97,6 +97,7 @@ class AnimeLibraryIngestionPipeline:
             PipelineBuffer("notification")
         )
         self._stage_tasks: list[asyncio.Task[None]] = []
+        self._scheduled_scan_tasks: set[asyncio.Task[None]] = set()
         self._stages: list[PipelineStage] = []
 
     async def start(self) -> None:
@@ -124,6 +125,12 @@ class AnimeLibraryIngestionPipeline:
         pipeline_logger.info("Anime library ingestion pipeline started")
 
     async def stop(self) -> None:
+        scheduled_tasks = list(self._scheduled_scan_tasks)
+        for task in scheduled_tasks:
+            task.cancel()
+        if scheduled_tasks:
+            await asyncio.gather(*scheduled_tasks, return_exceptions=True)
+        self._scheduled_scan_tasks.clear()
         for stage in self._stages:
             await stage.stop()
         for task in self._stage_tasks:
@@ -139,6 +146,28 @@ class AnimeLibraryIngestionPipeline:
         if stage is None:
             raise RuntimeError("RSS stage is not enabled")
         return await stage.scan_now()
+
+    def schedule_rss_scan_for_url(self, source_url: str) -> bool:
+        """Schedule a non-blocking scan for one newly saved RSS source."""
+        stage = self._rss_stage()
+        source_url = source_url.strip()
+        if stage is None or not source_url:
+            return False
+
+        task = asyncio.create_task(self._run_scheduled_rss_scan(stage, source_url))
+        self._scheduled_scan_tasks.add(task)
+        task.add_done_callback(self._scheduled_scan_tasks.discard)
+        return True
+
+    async def _run_scheduled_rss_scan(self, stage: RSSStage, source_url: str) -> None:
+        try:
+            await stage.scan_now(source_url=source_url)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            pipeline_logger.error(
+                f"Immediate RSS scan failed for {source_url}: {error}"
+            )
 
     def rss_status(self) -> dict[str, object]:
         """Return RSS stage status for the HTTP UI."""

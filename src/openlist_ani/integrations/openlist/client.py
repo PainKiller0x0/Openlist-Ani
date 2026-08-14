@@ -141,6 +141,7 @@ class OpenListClient:
         path: str,
         tool: str | OfflineDownloadTool,
         delete_policy: str = "delete_always",
+        name: str = "",
     ) -> list[OpenlistTask] | None:
         """Add offline download tasks.
 
@@ -163,6 +164,8 @@ class OpenListClient:
             "tool": str(tool),
             "delete_policy": delete_policy,
         }
+        if name:
+            payload["name"] = name
 
         data = await self._post(url, payload)
         if data and data.get("code") == 200:

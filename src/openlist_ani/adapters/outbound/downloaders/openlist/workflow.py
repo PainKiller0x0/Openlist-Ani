@@ -229,10 +229,21 @@ class OpenListDownloadWorkflow:
             f"url={submitted_url}, temp={temp_path}"
         )
 
+        base_name = (
+            task.release.anime_name_override
+            or task.release.anime_name
+            or "release"
+        )
+        # 安全名带集数，避免并发任务文件名冲突（迅雷审核只查敏感词）
+        if task.release.season is not None and task.release.episode is not None:
+            download_name = f"{base_name} S{task.release.season:02d}E{task.release.episode:02d}"
+        else:
+            download_name = base_name
         tasks = await self._client.add_offline_download(
             urls=[submitted_url],
             path=temp_path,
             tool=self._offline_download_tool,
+            name=download_name,
         )
         if not tasks:
             raise DownloadError("Failed to create offline download task")

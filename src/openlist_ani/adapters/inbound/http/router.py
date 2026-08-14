@@ -224,8 +224,14 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         exclude_patterns=normalize_exclude_patterns(request.exclude_patterns),
     )
     preview = parsed.entries[0].title if parsed.entries else ""
+    scan_scheduled = False
     if success:
-        message = "RSS 已保存，追踪器已立即更新；新条目会按轮询周期自动下载。"
+        scan_scheduled = svc.schedule_rss_scan_for_url(request.url)
+        message = (
+            "RSS 已保存，已立即触发该订阅扫描；新条目也会继续按轮询周期检查。"
+            if scan_scheduled
+            else "RSS 已保存，但当前未能启动立即扫描；新条目会按轮询周期检查。"
+        )
     return {
         "success": success,
         "message": message,
@@ -237,6 +243,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         "tmdb_id": metadata.get("tmdb_id"),
         "poster_url": metadata.get("poster_url", ""),
         "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
+        "scan_scheduled": scan_scheduled,
     }
 
 

@@ -67,10 +67,24 @@ class ReleaseFeedReader:
 
     async def fetch_new_releases(self) -> list[AnimeRelease]:
         """Fetch releases from all configured feeds."""
-        if not self._urls:
+        return await self._fetch_new_releases_from_urls(self._urls)
+
+    async def fetch_new_releases_for_urls(self, urls: list[str]) -> list[AnimeRelease]:
+        """Fetch releases only from the requested active feed URLs.
+
+        This is used after a subscription is saved so the new source can be
+        checked immediately without waiting for the next full RSS poll.
+        Unknown or paused URLs are ignored deliberately.
+        """
+        active_urls = set(self._urls)
+        selected = [url for url in dict.fromkeys(urls) if url in active_urls]
+        return await self._fetch_new_releases_from_urls(selected)
+
+    async def _fetch_new_releases_from_urls(self, urls: list[str]) -> list[AnimeRelease]:
+        if not urls:
             return []
 
-        fetches = self._build_fetch_tasks(self._urls)
+        fetches = self._build_fetch_tasks(urls)
         if not fetches:
             return []
 

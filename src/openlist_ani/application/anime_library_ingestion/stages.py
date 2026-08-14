@@ -132,12 +132,15 @@ class RSSStage(PipelineStage[None]):
 
         await self._sleep_until_next_scan()
 
-    async def scan_now(self) -> dict[str, object]:
-        """Run one scan immediately, without waiting for the polling timer."""
-        if self._scan_lock.locked():
-            return self.status()
+    async def scan_now(self, source_url: str | None = None) -> dict[str, object]:
+        """Run one scan immediately, optionally limited to one RSS source.
+
+        Waiting for the lock is intentional: if the periodic scan is already
+        running, the newly saved subscription is checked right after it
+        instead of being silently skipped.
+        """
         async with self._scan_lock:
-            await self._run_scan()
+            await self._run_scan(source_url=source_url)
         self._set_next_scan_at()
         return self.status()
 
@@ -155,15 +158,19 @@ class RSSStage(PipelineStage[None]):
             "interval_seconds": self._scan_interval_seconds(),
         }
 
-    async def _run_scan(self) -> None:
+    async def _run_scan(self, source_url: str | None = None) -> None:
         self._scan_in_progress = True
         self._last_scan_status = "running"
-        self._last_scan_message = "正在拉取 RSS 并检查新条目"
+        self._last_scan_message = (
+            f"正在立即检查新订阅：{source_url}"
+            if source_url
+            else "正在拉取 RSS 并检查新条目"
+        )
         self._last_scan_started_at = datetime.now().astimezone().isoformat(
             timespec="seconds"
         )
         try:
-            self._last_scan_new_count = await self._scan_once()
+            self._last_scan_new_count = await self._scan_once(source_url=source_url)
             self._last_scan_status = "success"
             self._last_scan_message = (
                 f"扫描完成，发现 {self._last_scan_new_count} 个新条目"
@@ -196,9 +203,24 @@ class RSSStage(PipelineStage[None]):
             timespec="seconds"
         )
 
-    async def _scan_once(self) -> int:
-        rss_logger.info("RSS scan started")
-        entries = self._deduplicate(await self._feed_reader.fetch_new_releases())
+    async def _scan_once(self, source_url: str | None = None) -> int:
+        if source_url:
+            rss_logger.info(f"RSS targeted scan started: source={source_url}")
+            fetch_for_urls = getattr(
+                self._feed_reader, "fetch_new_releases_for_urls", None
+            )
+            if fetch_for_urls is None:
+                rss_logger.warning(
+                    "Feed reader does not support targeted scans; "
+                    "falling back to a full RSS scan"
+                )
+                fetched = await self._feed_reader.fetch_new_releases()
+            else:
+                fetched = await fetch_for_urls([source_url])
+        else:
+            rss_logger.info("RSS scan started")
+            fetched = await self._feed_reader.fetch_new_releases()
+        entries = self._deduplicate(fetched)
         processable, prefilter_summary = await self._filter_downloaded(entries)
         if not processable:
             self._log_scan_completed(0, prefilter_summary)

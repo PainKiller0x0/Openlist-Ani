@@ -261,6 +261,10 @@ class BackendApiService:
     async def scan_rss_now(self) -> dict[str, object]:
         return await self._application_service.scan_rss_now()
 
+    def schedule_rss_scan_for_url(self, source_url: str) -> bool:
+        """Start a background targeted scan for a newly saved RSS source."""
+        return self._application_service.schedule_rss_scan_for_url(source_url)
+
     def rss_status(self) -> dict[str, object]:
         return self._application_service.rss_status()
 
