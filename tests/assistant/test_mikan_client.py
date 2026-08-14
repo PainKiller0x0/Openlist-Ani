@@ -15,6 +15,10 @@ def test_mikan_search_panel_is_mounted_on_home_page():
     assert "function relocateMikanPanel" in INDEX_HTML
     assert 'id="settingsMikanBaseUrl"' in INDEX_HTML
     assert INDEX_HTML.index('id="mikanHome"') < INDEX_HTML.index("<h2>RSS 订阅</h2>")
+    assert 'for="rssExclude"' not in INDEX_HTML
+    assert "previewExclude" in INDEX_HTML
+    assert "function applyPreviewExclude" in INDEX_HTML
+    assert "⌛ 识别中" in INDEX_HTML
 
 
 def test_mikan_rss_url_uses_configured_site_and_group():
@@ -77,3 +81,4 @@ def test_configured_mikan_rss_uses_mikan_feed_parser():
     )
 
     assert isinstance(source, MikanFeedSource)
+    assert source.entry_concurrency == 10
