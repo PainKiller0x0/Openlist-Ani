@@ -258,8 +258,9 @@ class BangumiConfig(BaseModel):
 
 
 class MikanConfig(BaseModel):
-    """Configuration for Mikan (mikanani.me) integration."""
+    """Configuration for the Mikan-compatible anime site integration."""
 
+    base_url: str = "https://mikanani.kas.pub/"  # Mikan-compatible site base URL
     username: str = ""  # Mikan account username
     password: str = ""  # Mikan account password
 
@@ -511,6 +512,12 @@ class ConfigManager:
             self._config.llm.tmdb_language = tmdb_language.strip()
         if metadata_parser_provider is not None and metadata_parser_provider.strip():
             self._config.metadata_parser.provider = metadata_parser_provider.strip()
+        self.save()
+
+    def update_mikan_settings(self, *, base_url: str | None = None) -> None:
+        """Persist the Mikan-compatible site URL used by the web helper."""
+        if base_url is not None and base_url.strip():
+            self._config.mikan.base_url = base_url.strip().rstrip("/") + "/"
         self.save()
 
     def update_openlist_settings(

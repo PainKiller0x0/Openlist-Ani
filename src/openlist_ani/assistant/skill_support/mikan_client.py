@@ -1,5 +1,5 @@
 """
-Async HTTP client for Mikan (mikanani.me).
+Async HTTP client for a Mikan-compatible anime site.
 
 Handles cookie-based authentication (login) and anime subscription
 management via the Mikan web API.
@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from urllib.parse import urljoin
 
 import aiohttp
 from bs4 import BeautifulSoup
 from openlist_ani.logger import logger
 
-_MIKAN_BASE_URL = "https://mikanani.me"
+_MIKAN_BASE_URL = "https://mikanani.kas.pub"
 _USER_AGENT = "openlist-ani/1.0 (https://github.com/Openlist-Ani)"
 _LOGIN_PATH = "/Account/Login"
 _SUBSCRIBE_PATH = "/Home/SubscribeBangumi"
@@ -38,11 +39,21 @@ class MikanClient:
         password: Mikan account password.
     """
 
-    def __init__(self, username: str, password: str) -> None:
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        base_url: str = _MIKAN_BASE_URL,
+    ) -> None:
         self._username = username
         self._password = password
+        self._base_url = base_url.strip().rstrip("/") or _MIKAN_BASE_URL
         self._session: aiohttp.ClientSession | None = None
         self._authenticated = False
+
+    def _url(self, path: str) -> str:
+        """Build a URL against the configured Mikan-compatible site."""
+        return urljoin(f"{self._base_url}/", path.lstrip("/"))
 
     def _ensure_session(self) -> aiohttp.ClientSession:
         """Create or return the shared aiohttp session with cookie jar."""
@@ -113,7 +124,7 @@ class MikanClient:
             logger.error("Mikan: Username or password not configured")
             return False
 
-        login_url = f"{_MIKAN_BASE_URL}{_LOGIN_PATH}?ReturnUrl=%2F"
+        login_url = f"{self._url(_LOGIN_PATH)}?ReturnUrl=%2F"
         csrf_token = await self._fetch_csrf_token(login_url)
         if not csrf_token:
             logger.error("Mikan: Could not obtain CSRF token for login")
@@ -196,7 +207,7 @@ class MikanClient:
         if language is not None:
             payload["Language"] = language
 
-        url = f"{_MIKAN_BASE_URL}{_SUBSCRIBE_PATH}"
+        url = self._url(_SUBSCRIBE_PATH)
         try:
             async with session.post(
                 url,
@@ -242,7 +253,7 @@ class MikanClient:
         if subtitle_group_id is not None:
             payload["SubtitleGroupID"] = subtitle_group_id
 
-        url = f"{_MIKAN_BASE_URL}{_UNSUBSCRIBE_PATH}"
+        url = self._url(_UNSUBSCRIBE_PATH)
         try:
             async with session.post(
                 url,
@@ -273,7 +284,7 @@ class MikanClient:
             List of dicts with bangumi_id, name, and url.
         """
         session = self._ensure_session()
-        url = f"{_MIKAN_BASE_URL}/Home/Search"
+        url = self._url("/Home/Search")
         try:
             async with session.get(url, params={"searchstr": keyword}) as resp:
                 if resp.status != 200:
@@ -284,7 +295,7 @@ class MikanClient:
             logger.error(f"Mikan: Search request failed: {exc}")
             return []
 
-        return self._parse_search_results(html)
+        return self._parse_search_results(html, self._base_url)
 
     async def fetch_bangumi_subgroups(self, bangumi_id: int) -> list[dict[str, Any]]:
         """Fetch available subtitle groups for a bangumi.
@@ -301,7 +312,7 @@ class MikanClient:
             ``releases`` (list[dict]) for each subtitle group.
         """
         session = self._ensure_session()
-        url = f"{_MIKAN_BASE_URL}/Home/Bangumi/{bangumi_id}"
+        url = self._url(f"/Home/Bangumi/{bangumi_id}")
         try:
             async with session.get(url) as resp:
                 if resp.status != 200:
@@ -315,10 +326,20 @@ class MikanClient:
             logger.error(f"Mikan: Failed to fetch bangumi {bangumi_id} page: {exc}")
             return []
 
-        return self._parse_subgroups(html)
+        return self._parse_subgroups(html, self._base_url)
+
+    def rss_url(self, bangumi_id: int, subgroup_id: int | None = None) -> str:
+        """Return the RSS URL for a bangumi or one of its subtitle groups."""
+        url = f"{self._url('/RSS/Bangumi')}?bangumiId={int(bangumi_id)}"
+        if subgroup_id is not None:
+            url += f"&subgroupid={int(subgroup_id)}"
+        return url
 
     @staticmethod
-    def _parse_release_row(row: Any) -> dict[str, str] | None:
+    def _parse_release_row(
+        row: Any,
+        base_url: str = _MIKAN_BASE_URL,
+    ) -> dict[str, str] | None:
         """Parse a single release table row into a dict.
 
         A release is one resource entry (a specific language/quality
@@ -339,7 +360,7 @@ class MikanClient:
         # Release detail page URL
         release_url = title_tag.get("href", "")
         if release_url and not release_url.startswith("http"):
-            release_url = f"{_MIKAN_BASE_URL}{release_url}"
+            release_url = urljoin(f"{base_url.rstrip('/')}/", release_url)
 
         # Magnet link from the magnet button
         magnet = ""
@@ -368,6 +389,7 @@ class MikanClient:
         soup: BeautifulSoup,
         group_id: int,
         max_releases: int = 20,
+        base_url: str = _MIKAN_BASE_URL,
     ) -> list[dict[str, str]]:
         """Extract releases for a subtitle group from the parsed page.
 
@@ -393,14 +415,17 @@ class MikanClient:
 
         releases: list[dict[str, str]] = []
         for row in ep_table.select("tr")[:max_releases]:
-            release = MikanClient._parse_release_row(row)
+            release = MikanClient._parse_release_row(row, base_url)
             if release is not None:
                 releases.append(release)
 
         return releases
 
     @staticmethod
-    def _parse_subgroups(html: str) -> list[dict[str, Any]]:
+    def _parse_subgroups(
+        html: str,
+        base_url: str = _MIKAN_BASE_URL,
+    ) -> list[dict[str, Any]]:
         """Parse subtitle groups and their releases from a bangumi page.
 
         Each group dict contains:
@@ -432,13 +457,18 @@ class MikanClient:
                 continue
             seen.add(group_id)
 
-            releases = MikanClient._extract_group_releases(soup, group_id)
+            releases = MikanClient._extract_group_releases(
+                soup, group_id, base_url=base_url
+            )
             results.append({"id": group_id, "name": name, "releases": releases})
 
         return results
 
     @staticmethod
-    def _parse_search_results(html: str) -> list[dict[str, Any]]:
+    def _parse_search_results(
+        html: str,
+        base_url: str = _MIKAN_BASE_URL,
+    ) -> list[dict[str, Any]]:
         """Parse search results HTML into structured data.
 
         Args:
@@ -463,7 +493,7 @@ class MikanClient:
                     {
                         "bangumi_id": bangumi_id,
                         "name": name,
-                        "url": f"{_MIKAN_BASE_URL}{href}",
+                        "url": urljoin(f"{base_url.rstrip('/')}/", href),
                     }
                 )
 

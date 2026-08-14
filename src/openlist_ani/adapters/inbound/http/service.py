@@ -10,6 +10,8 @@ from openlist_ani.domain.download_task.memento import TaskMemento
 from openlist_ani.application.anime_library_ingestion.exclusions import (
     normalize_exclude_patterns,
 )
+from openlist_ani.adapters.outbound.configuration import config
+from openlist_ani.assistant.skill_support.mikan_client import MikanClient
 
 from .schema import (
     DownloadTaskResponse,
@@ -264,6 +266,81 @@ class BackendApiService:
     def schedule_rss_scan_for_url(self, source_url: str) -> bool:
         """Start a background targeted scan for a newly saved RSS source."""
         return self._application_service.schedule_rss_scan_for_url(source_url)
+
+    async def search_mikan(
+        self,
+        keyword: str,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        """Search the configured Mikan-compatible site for bangumi."""
+        client = MikanClient(
+            username=config.mikan.username,
+            password=config.mikan.password,
+            base_url=base_url or config.mikan.base_url,
+        )
+        try:
+            results = await client.search_bangumi(keyword.strip())
+            return {
+                "success": True,
+                "results": results,
+                "base_url": base_url or config.mikan.base_url,
+            }
+        except Exception as exc:
+            return {"success": False, "message": f"Mikan 搜索失败：{exc}"}
+        finally:
+            await client.close()
+
+    async def list_mikan_groups(
+        self,
+        bangumi_id: int,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        """List subtitle groups and ready-to-use RSS URLs for a bangumi."""
+        client = MikanClient(
+            username=config.mikan.username,
+            password=config.mikan.password,
+            base_url=base_url or config.mikan.base_url,
+        )
+        try:
+            groups = await client.fetch_bangumi_subgroups(bangumi_id)
+            return {
+                "success": True,
+                "bangumi_id": bangumi_id,
+                "all_rss_url": client.rss_url(bangumi_id),
+                "groups": [
+                    {
+                        "id": group.get("id"),
+                        "name": group.get("name", "未命名字幕组"),
+                        "release_count": len(group.get("releases", [])),
+                        "rss_url": client.rss_url(bangumi_id, group.get("id")),
+                    }
+                    for group in groups
+                ],
+            }
+        except Exception as exc:
+            return {"success": False, "message": f"Mikan 字幕组读取失败：{exc}"}
+        finally:
+            await client.close()
+
+    def mikan_rss_url(
+        self,
+        bangumi_id: int,
+        subgroup_id: int | None = None,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        """Build the selected Mikan RSS URL using the current site setting."""
+        client = MikanClient(
+            username=config.mikan.username,
+            password=config.mikan.password,
+            base_url=base_url or config.mikan.base_url,
+        )
+        return {
+            "success": True,
+            "rss_url": client.rss_url(bangumi_id, subgroup_id),
+        }
 
     def rss_status(self) -> dict[str, object]:
         return self._application_service.rss_status()

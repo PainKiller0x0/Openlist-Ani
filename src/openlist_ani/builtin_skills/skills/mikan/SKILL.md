@@ -1,7 +1,7 @@
 ---
 name: mikan
 description: >
-  Mikan (mikanani.me) API reference — search, subgroups, releases,
+  Mikan-compatible site API reference — search, subgroups, releases,
   subscribe/unsubscribe.
 when_to_use: >
   When you need to call a Mikan API action. For download/subscribe
@@ -10,7 +10,7 @@ when_to_use: >
 
 # mikan
 
-Mikan (mikanani.me) anime torrent site API reference.
+Mikan-compatible anime site API reference.
 
 ## Actions
 
@@ -27,6 +27,7 @@ search, subgroups, releases are public — no login needed.
 subscribe and unsubscribe require Mikan credentials in config.toml:
 ```toml
 [mikan]
+base_url = "https://mikanani.kas.pub/"
 username = "your_username"
 password = "your_password"
 ```

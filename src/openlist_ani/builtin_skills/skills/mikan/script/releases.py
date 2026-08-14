@@ -28,6 +28,7 @@ async def run(
     client = MikanClient(
         username=mikan.username or "",
         password=mikan.password or "",
+        base_url=mikan.base_url,
     )
     try:
         groups = await client.fetch_bangumi_subgroups(int(bangumi_id))

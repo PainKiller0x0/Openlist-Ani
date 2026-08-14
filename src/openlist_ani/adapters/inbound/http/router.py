@@ -5,7 +5,7 @@ import re
 import signal
 import uuid
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -31,6 +31,9 @@ from .schema import (
     RSSPreviewRequest,
     ToggleRSSRequest,
     UISettingsRequest,
+    MikanGroupsRequest,
+    MikanRSSRequest,
+    MikanSearchRequest,
 )
 from .service import BackendApiService
 from openlist_ani.application.anime_library_ingestion.exclusions import (
@@ -46,6 +49,15 @@ MAX_TORRENT_BYTES = 50 * 1024 * 1024
 def _internal_backend_host() -> str:
     host = config.backend.host.strip()
     return "127.0.0.1" if host in {"", "0.0.0.0", "::"} else host
+
+
+def _normalize_http_url(value: str, *, label: str) -> str:
+    """Validate and normalize a user-supplied HTTP(S) base URL."""
+    normalized = value.strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail=f"{label}必须是完整的 http(s) 地址")
+    return normalized.rstrip("/") + "/"
 
 
 @router.get("/ui/state")
@@ -69,6 +81,7 @@ async def ui_state() -> dict:
         "download_path": config.openlist.download_path,
         "poll_interval_seconds": config.rss.interval_time,
         "max_download_retries": config.rss.max_download_retries,
+        "mikan_base_url": config.mikan.base_url,
         "rss_status": svc.rss_status(),
         "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
     }
@@ -92,6 +105,7 @@ async def ui_settings() -> dict:
         "rename_format": config.openlist.rename_format,
         "poll_interval_seconds": config.rss.interval_time,
         "max_download_retries": config.rss.max_download_retries,
+        "mikan_base_url": config.mikan.base_url,
     }
 
 
@@ -135,6 +149,16 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
         if request.max_download_retries is not None
         else config.rss.max_download_retries
     )
+    requested_mikan_base_url = (
+        request.mikan_base_url.strip()
+        if request.mikan_base_url is not None
+        else config.mikan.base_url
+    )
+    if request.mikan_base_url is not None:
+        requested_mikan_base_url = _normalize_http_url(
+            requested_mikan_base_url,
+            label="Mikan 地址",
+        )
     format_ok, format_error = svc.validate_rename_format(requested_format)
     if not format_ok:
         raise HTTPException(status_code=400, detail=format_error)
@@ -188,11 +212,66 @@ async def ui_update_settings(request: UISettingsRequest) -> dict:
         tmdb_language=request.tmdb_language,
         metadata_parser_provider=request.metadata_parser_provider,
     )
+    if request.mikan_base_url is not None:
+        config.update_mikan_settings(base_url=requested_mikan_base_url)
     return {
         "success": True,
         "message": "设置已保存；LLM/解析器相关修改将在服务重启后生效。",
         "requires_restart": True,
+        "mikan_base_url": config.mikan.base_url,
     }
+
+
+@router.post("/ui/mikan/search")
+async def ui_mikan_search(request: MikanSearchRequest) -> dict[str, object]:
+    """Search the configured Mikan-compatible site from the web UI."""
+    base_url = (
+        _normalize_http_url(request.base_url, label="Mikan 地址")
+        if request.base_url
+        else None
+    )
+    result = await BackendApiService.get().search_mikan(
+        request.keyword,
+        base_url=base_url,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail=result.get("message", "Mikan 搜索失败"))
+    return result
+
+
+@router.post("/ui/mikan/groups")
+async def ui_mikan_groups(request: MikanGroupsRequest) -> dict[str, object]:
+    """List subtitle groups for a selected Mikan bangumi."""
+    base_url = (
+        _normalize_http_url(request.base_url, label="Mikan 地址")
+        if request.base_url
+        else None
+    )
+    result = await BackendApiService.get().list_mikan_groups(
+        request.bangumi_id,
+        base_url=base_url,
+    )
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message", "Mikan 字幕组读取失败"),
+        )
+    return result
+
+
+@router.post("/ui/mikan/rss")
+async def ui_mikan_rss(request: MikanRSSRequest) -> dict[str, object]:
+    """Build a group-specific RSS URL for the existing add/preview flow."""
+    base_url = (
+        _normalize_http_url(request.base_url, label="Mikan 地址")
+        if request.base_url
+        else None
+    )
+    return BackendApiService.get().mikan_rss_url(
+        request.bangumi_id,
+        request.subgroup_id,
+        base_url=base_url,
+    )
 
 
 @router.post("/ui/scan")

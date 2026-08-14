@@ -139,7 +139,8 @@ allowed_users = [] # Feishu open_id/user_id allowlist; empty = allow all admitte
 access_token = ""  # Bangumi API Access Token (also supports env var BANGUMI_TOKEN)
 
 [mikan]
-username = ""  # Mikan (mikanani.me) account username
+base_url = "https://mikanani.kas.pub/"  # Mikan-compatible anime site base URL
+username = ""  # Mikan account username
 password = ""  # Mikan account password
 
 [log]

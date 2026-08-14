@@ -22,6 +22,8 @@ class FeedSourceFactory:
 
 def default_feed_source_registry() -> FeedSourceRegistry:
     registry = FeedSourceRegistry(fallback=CommonRSSFeedSource)
-    registry.register_domains(("mikanani.me", "mikanime.tv"), MikanFeedSource)
+    registry.register_domains(
+        ("mikanani.me", "mikanani.kas.pub", "mikanime.tv"), MikanFeedSource
+    )
     registry.register_domains(("ani.rip", "api.ani.rip"), AniApiFeedSource)
     return registry

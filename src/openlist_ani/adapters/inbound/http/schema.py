@@ -81,6 +81,29 @@ class UISettingsRequest(BaseModel):
     rename_format: str | None = Field(default=None, max_length=1000)
     poll_interval_seconds: int | None = Field(default=None, ge=60, le=86400)
     max_download_retries: int | None = Field(default=None, ge=0, le=100)
+    mikan_base_url: str | None = Field(default=None, max_length=1000)
+
+
+class MikanSearchRequest(BaseModel):
+    """Request body for searching the configured Mikan-compatible site."""
+
+    keyword: str = Field(..., min_length=1, max_length=200)
+    base_url: str | None = Field(default=None, max_length=1000)
+
+
+class MikanGroupsRequest(BaseModel):
+    """Request body for listing subtitle groups for one Mikan bangumi."""
+
+    bangumi_id: int = Field(..., ge=1)
+    base_url: str | None = Field(default=None, max_length=1000)
+
+
+class MikanRSSRequest(BaseModel):
+    """Request body for building a group-specific Mikan RSS URL."""
+
+    bangumi_id: int = Field(..., ge=1)
+    subgroup_id: int | None = Field(default=None, ge=1)
+    base_url: str | None = Field(default=None, max_length=1000)
 
 
 class RSSSubscriptionResponse(BaseModel):
