@@ -2,10 +2,18 @@ from openlist_ani.assistant.skill_support.mikan_client import MikanClient
 from openlist_ani.adapters.outbound.feed_sources.factory import FeedSourceFactory
 from openlist_ani.adapters.outbound.feed_sources.mikan import MikanFeedSource
 from openlist_ani.adapters.outbound.configuration.settings import MikanConfig
+from openlist_ani.adapters.inbound.http.frontend import INDEX_HTML
 
 
 def test_mikan_config_defaults_to_current_site():
     assert MikanConfig().base_url == "https://mikanani.kas.pub/"
+
+
+def test_mikan_search_panel_is_mounted_on_home_page():
+    assert 'id="mikanHome"' in INDEX_HTML
+    assert 'id="mikanHomeMount"' in INDEX_HTML
+    assert "function relocateMikanPanel" in INDEX_HTML
+    assert 'id="settingsMikanBaseUrl"' in INDEX_HTML
 
 
 def test_mikan_rss_url_uses_configured_site_and_group():
