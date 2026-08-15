@@ -1,0 +1,9 @@
+[Unit]
+Description=Synchronize rotating Xunlei tokens between OpenList and SmartStrm
+After=openlist.service
+Wants=openlist.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/xunlei-token-bridge.env
+ExecStart=/usr/local/sbin/xunlei-token-bridge.py
