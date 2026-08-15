@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 
@@ -102,6 +103,11 @@ class OpenListDownloadWorkflow:
 
     _TRANSFER_CHECK_MAX_RETRIES = 3
     _TRANSFER_CHECK_INTERVAL_SECONDS = 5
+    # OpenList can leave a transfer in its "undone" list while the source
+    # connection has already died.  Without a watchdog this keeps one
+    # download worker occupied forever and makes the whole queue look stuck.
+    _TRANSFER_STALL_TIMEOUT_SECONDS = 15 * 60
+    _PROGRESS_CHECKPOINT_INTERVAL_SECONDS = 30
 
     def __init__(
         self,
@@ -111,12 +117,14 @@ class OpenListDownloadWorkflow:
         conflict_resolver: OpenListFileConflictResolver,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         task_snapshot_cache: OpenListTaskSnapshotCache | None = None,
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         self._client = client
         self._offline_download_tool = offline_download_tool
         self._file_detector = file_detector
         self._conflict_resolver = conflict_resolver
         self._sleep = sleep
+        self._monotonic = monotonic
         self._task_snapshot_cache = task_snapshot_cache or OpenListTaskSnapshotCache(
             client
         )
@@ -178,7 +186,10 @@ class OpenListDownloadWorkflow:
             return
 
         handler, next_state = step
-        await handler(task)
+        if state == OpenListWorkflowState.DOWNLOAD_DONE:
+            await self._wait_transfer_complete(task, checkpoint)
+        else:
+            await handler(task)
         await self._checkpoint(task, next_state, checkpoint)
 
     async def _checkpoint(
@@ -199,6 +210,9 @@ class OpenListDownloadWorkflow:
             "downloaded_filename",
             "resolved_filename",
             "file_parent_path",
+            "progress",
+            "_download_progress_bucket",
+            "_transfer_progress_bucket",
         ):
             task.downloader_data.pop(key, None)
 
@@ -331,9 +345,16 @@ class OpenListDownloadWorkflow:
     def _is_complete_progress(progress: float | None) -> bool:
         return progress is not None and progress >= 100.0
 
-    async def _wait_transfer_complete(self, task: DownloadTask) -> None:
+    async def _wait_transfer_complete(
+        self,
+        task: DownloadTask,
+        checkpoint: WorkflowCheckpoint | None = None,
+    ) -> None:
         task_uuid = task.id
         not_found_count = 0
+        last_progress: float | None = None
+        last_progress_at = self._monotonic()
+        last_checkpoint_at = last_progress_at
 
         while True:
             undone = (
@@ -350,6 +371,35 @@ class OpenListDownloadWorkflow:
                     else None
                 )
                 self._log_progress(task, progress, is_transfer=True)
+                now = self._monotonic()
+                if progress is not None and (
+                    last_progress is None or progress > last_progress
+                ):
+                    last_progress = progress
+                    last_progress_at = now
+
+                if (
+                    checkpoint is not None
+                    and now - last_checkpoint_at
+                    >= self._PROGRESS_CHECKPOINT_INTERVAL_SECONDS
+                ):
+                    await checkpoint(task)
+                    last_checkpoint_at = now
+
+                if matching_undone.state in {
+                    OpenlistTaskState.CANCELED,
+                    OpenlistTaskState.CANCELING,
+                    OpenlistTaskState.ERRORED,
+                    OpenlistTaskState.FAILING,
+                    OpenlistTaskState.FAILED,
+                }:
+                    self._ensure_task_succeeded(matching_undone, "Transfer")
+
+                if now - last_progress_at >= self._TRANSFER_STALL_TIMEOUT_SECONDS:
+                    raise OpenListRemoteTaskFailed(
+                        f"Transfer stalled for {self._TRANSFER_STALL_TIMEOUT_SECONDS}s "
+                        f"(progress={last_progress if last_progress is not None else 'unknown'}%)"
+                    )
                 not_found_count = 0
                 await self._sleep(self._TRANSFER_CHECK_INTERVAL_SECONDS)
                 continue
@@ -361,6 +411,9 @@ class OpenListDownloadWorkflow:
             matching_done = next((t for t in done if task_uuid in t.name), None)
             if matching_done is not None:
                 self._ensure_task_succeeded(matching_done, "Transfer")
+                self._log_progress(task, 100, is_transfer=True)
+                if checkpoint is not None:
+                    await checkpoint(task)
                 return
 
             not_found_count += 1
@@ -454,6 +507,10 @@ class OpenListDownloadWorkflow:
 
         bounded_progress = max(0.0, min(progress, 100.0))
         task.progress = bounded_progress
+        # The downloader checkpoint persists this payload into the task
+        # memento.  Previously progress only lived in memory until a workflow
+        # state transition, so the UI showed a stale timestamp/state for hours.
+        task.downloader_data["progress"] = bounded_progress
         bucket_size = 25
         bucket_index = min(int(bounded_progress // bucket_size), 4)
         if bucket_index == 0:

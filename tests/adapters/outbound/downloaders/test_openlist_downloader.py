@@ -95,6 +95,7 @@ async def test_download_moves_detected_file_without_renaming():
         urls=["magnet:?xt=urn:btih:abc123"],
         path="/anime/.oani-download-tmp/workflow-1",
         tool="aria2",
+        name="葬送的芙莉莲 S01E01",
     )
     client.mkdir.assert_any_await("/anime/葬送的芙莉莲")
     client.mkdir.assert_any_await("/anime/葬送的芙莉莲/Season 1")
@@ -158,6 +159,7 @@ async def test_download_converts_torrent_url_to_magnet_before_submission(monkeyp
         urls=[magnet_url],
         path="/anime/.oani-download-tmp/torrent-workflow",
         tool="aria2",
+        name="葬送的芙莉莲 S01E01",
     )
 
 
@@ -612,3 +614,47 @@ async def test_openlist_task_snapshot_cache_does_not_store_in_flight_stale_fetch
 
     assert await in_flight == [stale_task]
     assert await cache.get_offline_download_undone() == [fresh_task]
+
+
+async def test_download_fails_fast_when_openlist_transfer_is_failed():
+    downloader, client = _downloader()
+    client.add_offline_download = AsyncMock(
+        return_value=[OpenlistTask(id="offline-1", name="offline")]
+    )
+    client.get_offline_download_undone = AsyncMock(return_value=[])
+    client.get_offline_download_done = AsyncMock(
+        return_value=[
+            OpenlistTask(
+                id="offline-1",
+                name="offline",
+                state=OpenlistTaskState.SUCCEEDED,
+            )
+        ]
+    )
+    client.get_offline_download_transfer_undone = AsyncMock(
+        return_value=[
+            OpenlistTask(
+                id="transfer-1",
+                name="workflow-1 transfer",
+                state=OpenlistTaskState.FAILED,
+                error="unexpected EOF",
+            )
+        ]
+    )
+    client.get_offline_download_transfer_done = AsyncMock(return_value=[])
+
+    with pytest.raises(DownloadError, match="unexpected EOF"):
+        await downloader.download(
+            PipelineContext(
+                workflow_id="workflow-1",
+                payload=DownloadRequest(
+                    release=_resource(),
+                    base_path="/anime",
+                    target_directory_path="/anime/葬送的芙莉莲/Season 1",
+                ),
+            )
+        )
+
+    client.remove_path.assert_awaited_once_with(
+        "/anime/.oani-download-tmp", ["workflow-1"]
+    )

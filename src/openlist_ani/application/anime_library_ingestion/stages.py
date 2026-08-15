@@ -417,6 +417,9 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
         try:
             label = _release_label(memento.release)
             memento.state = DownloadState.DOWNLOADING
+            # A retry is a new attempt.  Do not keep showing the previous
+            # OpenList error while this attempt is actively running.
+            memento.retry.last_error = None
             memento.started_at = memento.started_at or datetime.now().isoformat()
             memento.pipeline.next_buffer = "download"
             self._task_store.save(memento)

@@ -143,6 +143,7 @@ class DownloadTaskResponse(BaseModel):
     episode: int | None = None
     fansub: str | None = None
     quality: str | None = None
+    progress: float | None = None
     error_message: str | None = None
     retry_count: int = 0
     created_at: str

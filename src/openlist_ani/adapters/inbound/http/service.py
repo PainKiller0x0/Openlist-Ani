@@ -25,6 +25,11 @@ from .schema import (
 
 def _build_task_response(task: TaskMemento) -> DownloadTaskResponse:
     release = task.release
+    downloader_payload = (
+        task.downloader.payload
+        if task.downloader is not None
+        else {}
+    )
     return DownloadTaskResponse(
         id=task.task_id,
         title=release.title,
@@ -35,6 +40,7 @@ def _build_task_response(task: TaskMemento) -> DownloadTaskResponse:
         episode=release.episode,
         fansub=release.fansub,
         quality=release.quality.value if release.quality else None,
+        progress=downloader_payload.get("progress"),
         error_message=task.retry.last_error,
         retry_count=task.retry.retry_count,
         created_at=task.created_at,
