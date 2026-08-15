@@ -28,6 +28,7 @@ class AnimeLibraryIngestionSettings:
     download_path: str
     rename_format: str
     rss_interval_seconds: float
+    max_download_retries: int = 3
     download_concurrency: int = 3
     strict_filtering: bool = False
     metadata_filter: MetadataFilterSettings = field(

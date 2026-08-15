@@ -55,6 +55,7 @@ class ParseResult(BaseModel):
 class TMDBMatch(BaseModel):
     tmdb_id: int
     anime_name: str
+    first_air_date: str | None = None
     confidence: str = "unknown"
 
 

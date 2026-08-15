@@ -13,6 +13,14 @@ exclude_fansub = []  # Blacklist fansub groups (exact match, e.g. ["Fansub_A", "
 exclude_quality = []  # Blacklist quality levels (e.g. ["480p"])
 exclude_languages = []  # Blacklist language labels. See docs for supported values.
 
+# The web UI stores per-subscription exclusions under [[rss.subscriptions]].
+# Example:
+# [[rss.subscriptions]]
+# url = "https://mikanani.me/RSS/MyBangumi?token=xxx"
+# name = "示例番剧"
+# enabled = true
+# exclude_patterns = ["ABEMA", "CR"]
+
 [rss.priority]
 field_order = ["fansub", "quality", "languages"]  # Field comparison order, earlier fields take precedence
 fansub = []  # Fansub group priority, earlier = higher (e.g. ["Fansub_A", "Fansub_B"])
@@ -43,7 +51,7 @@ url = "http://localhost:5244"
 token = ""
 download_path = "/"
 offline_download_tool = "qBittorrent"  # Supported: aria2, qBittorrent, PikPak, 115 Cloud, 115 Open, 123Pan, 123 Open, SimpleHttp, Thunder, ThunderBrowser, ThunderX, Transmission
-rename_format = "{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}"
+rename_format = "{anime_name} - S{season:02d}E{episode:02d}"
 
 [llm]
 openai_api_key = ""  # Required for metadata_parser.provider = "llm" and for assistant.enabled = true
@@ -131,7 +139,8 @@ allowed_users = [] # Feishu open_id/user_id allowlist; empty = allow all admitte
 access_token = ""  # Bangumi API Access Token (also supports env var BANGUMI_TOKEN)
 
 [mikan]
-username = ""  # Mikan (mikanani.me) account username
+base_url = "https://mikanani.kas.pub/"  # Mikan-compatible anime site base URL
+username = ""  # Mikan account username
 password = ""  # Mikan account password
 
 [log]

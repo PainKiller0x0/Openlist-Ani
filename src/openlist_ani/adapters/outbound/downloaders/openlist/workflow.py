@@ -17,6 +17,10 @@ from openlist_ani.integrations.openlist import (
     OpenlistTaskState,
 )
 from openlist_ani.logger import logger
+from openlist_ani.adapters.outbound.torrent_metadata import (
+    is_torrent_url,
+    torrent_url_to_magnet,
+)
 
 from .file_detection import OpenListFileDetector
 from .task_snapshot_cache import OpenListTaskSnapshotCache
@@ -208,15 +212,38 @@ class OpenListDownloadWorkflow:
         temp_path = _join_openlist_path(_temp_root_path(task.base_path), task.id)
         task.downloader_data["temp_path"] = temp_path
 
+        submitted_url = task.downloader_data.get("submitted_url")
+        if not submitted_url:
+            submitted_url = task.release.download_url
+            if is_torrent_url(submitted_url):
+                try:
+                    submitted_url = await torrent_url_to_magnet(submitted_url)
+                except Exception as error:
+                    raise DownloadError(
+                        f"Could not convert torrent URL to magnet: {error}"
+                    ) from error
+            task.downloader_data["submitted_url"] = submitted_url
+
         logger.debug(
             f"OpenList submit: title={task.release.title}, "
-            f"url={task.release.download_url}, temp={temp_path}"
+            f"url={submitted_url}, temp={temp_path}"
         )
 
+        base_name = (
+            task.release.anime_name_override
+            or task.release.anime_name
+            or "release"
+        )
+        # 安全名带集数，避免并发任务文件名冲突（迅雷审核只查敏感词）
+        if task.release.season is not None and task.release.episode is not None:
+            download_name = f"{base_name} S{task.release.season:02d}E{task.release.episode:02d}"
+        else:
+            download_name = base_name
         tasks = await self._client.add_offline_download(
-            urls=[task.release.download_url],
+            urls=[submitted_url],
             path=temp_path,
             tool=self._offline_download_tool,
+            name=download_name,
         )
         if not tasks:
             raise DownloadError("Failed to create offline download task")

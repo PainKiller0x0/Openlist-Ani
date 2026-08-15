@@ -6,6 +6,7 @@ import pytest
 
 from openlist_ani.application.anime_library_ingestion.models import PipelineContext
 from openlist_ani.adapters.outbound.downloaders import OpenListDownloader
+from openlist_ani.adapters.outbound.downloaders.openlist import workflow
 from openlist_ani.adapters.outbound.downloaders.openlist.task_snapshot_cache import (
     OpenListTaskSnapshotCache,
 )
@@ -109,6 +110,54 @@ async def test_download_moves_detected_file_without_renaming():
     assert (
         result.downloader_memento.payload["temp_path"]
         == "/anime/.oani-download-tmp/workflow-1"
+    )
+
+
+async def test_download_converts_torrent_url_to_magnet_before_submission(monkeypatch):
+    downloader, client = _downloader()
+    client.add_offline_download = AsyncMock(
+        return_value=[OpenlistTask(id="offline-torrent", name="offline")]
+    )
+    client.get_offline_download_undone = AsyncMock(return_value=[])
+    client.get_offline_download_done = AsyncMock(
+        return_value=[
+            OpenlistTask(
+                id="offline-torrent",
+                name="offline",
+                state=OpenlistTaskState.SUCCEEDED,
+            )
+        ]
+    )
+    client.get_offline_download_transfer_undone = AsyncMock(return_value=[])
+    client.get_offline_download_transfer_done = AsyncMock(return_value=[])
+    client.list_files = AsyncMock(
+        side_effect=[
+            [SimpleNamespace(name="episode.mp4", is_dir=False, size=100)],
+            [],
+        ]
+    )
+    torrent_url = "https://example.test/releases/episode.torrent"
+    magnet_url = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef"
+    convert = AsyncMock(return_value=magnet_url)
+    monkeypatch.setattr(workflow, "torrent_url_to_magnet", convert, raising=False)
+
+    result = await downloader.download(
+        PipelineContext(
+            workflow_id="torrent-workflow",
+            payload=DownloadRequest(
+                release=_resource(download_url=torrent_url),
+                base_path="/anime",
+                target_directory_path="/anime/葬送的芙莉莲/Season 1",
+            ),
+        )
+    )
+
+    assert result.filename == "episode.mp4"
+    convert.assert_awaited_once_with(torrent_url)
+    client.add_offline_download.assert_awaited_once_with(
+        urls=[magnet_url],
+        path="/anime/.oani-download-tmp/torrent-workflow",
+        tool="aria2",
     )
 
 

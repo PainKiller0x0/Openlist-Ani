@@ -1,3 +1,4 @@
+import asyncio
 import re
 from typing import Any
 
@@ -10,7 +11,12 @@ from openlist_ani.domain.anime_release import AnimeRelease
 
 
 class MikanFeedSource(FeedSource):
-    entry_concurrency = 5
+    entry_concurrency = 10
+
+    def __init__(self) -> None:
+        # A Mikan RSS normally points every entry at the same bangumi page.
+        # Share that in-flight request across entries in this feed fetch.
+        self._metadata_tasks: dict[str, asyncio.Task[dict[str, Any]]] = {}
 
     _CN_NUM_MAP = {
         "一": 1,
@@ -104,7 +110,7 @@ class MikanFeedSource(FeedSource):
 
         return None
 
-    async def _fetch_metadata(
+    async def _fetch_metadata_page(
         self, session: aiohttp.ClientSession, url: str
     ) -> dict[str, Any]:
         """Fetch anime metadata from Mikan details page.
@@ -140,6 +146,19 @@ class MikanFeedSource(FeedSource):
             logger.warning(f"Failed to fetch metadata from {url}: {e}")
 
         return metadata
+
+    async def _fetch_metadata(
+        self, session: aiohttp.ClientSession, url: str
+    ) -> dict[str, Any]:
+        task = self._metadata_tasks.get(url)
+        if task is None:
+            task = asyncio.create_task(self._fetch_metadata_page(session, url))
+            self._metadata_tasks[url] = task
+        try:
+            return dict(await task)
+        except Exception as e:
+            logger.warning(f"Failed to fetch cached metadata for {url}: {e}")
+            return {"anime_name": None, "season": None, "fansub": None}
 
     async def parse_entry(
         self, entry, session: aiohttp.ClientSession

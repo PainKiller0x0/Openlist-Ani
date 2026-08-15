@@ -1,16 +1,21 @@
-"""
-FastAPI router defining all backend API endpoints.
-"""
+"""FastAPI router defining all backend API endpoints and the small web UI."""
 
 import os
+import re
 import signal
+import uuid
+from pathlib import Path
+from urllib.parse import unquote, urlparse
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
-from openlist_ani.logger import logger
+from openlist_ani.adapters.outbound.configuration import config
+from openlist_ani.logger import logger, read_recent_logs
 from .schema import (
     AddRSSRequest,
     AddRSSResponse,
+    CorrectRSSRequest,
     CreateDownloadRequest,
     CreateDownloadResponse,
     DownloadListResponse,
@@ -22,10 +27,463 @@ from .schema import (
     ResolveTorrentRequest,
     ResolveTorrentResponse,
     RestartResponse,
+    GlobalRSSFilterRequest,
+    RSSPreviewRequest,
+    ToggleRSSRequest,
+    UISettingsRequest,
+    MikanGroupsRequest,
+    MikanRSSRequest,
+    MikanSearchRequest,
 )
 from .service import BackendApiService
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    normalize_exclude_patterns,
+)
 
 router = APIRouter(prefix="/api")
+UPLOAD_DIR = Path("data/uploads")
+TORRENT_NAME = re.compile(r"^[0-9a-f]{32}\.torrent$")
+MAX_TORRENT_BYTES = 50 * 1024 * 1024
+
+
+def _internal_backend_host() -> str:
+    host = config.backend.host.strip()
+    return "127.0.0.1" if host in {"", "0.0.0.0", "::"} else host
+
+
+def _normalize_http_url(value: str, *, label: str) -> str:
+    """Validate and normalize a user-supplied HTTP(S) base URL."""
+    normalized = value.strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=400, detail=f"{label}必须是完整的 http(s) 地址")
+    return normalized.rstrip("/") + "/"
+
+
+@router.get("/ui/state")
+async def ui_state() -> dict:
+    """Return only the UI-safe runtime state needed by the built-in page."""
+    svc = BackendApiService.get()
+    subscriptions = [
+        item
+        for item in svc.list_rss_subscriptions()
+        if str(item.get("url", ""))
+    ]
+    return {
+        "rss_urls": [
+            str(item["url"])
+            for item in subscriptions
+            if item.get("enabled", True)
+        ],
+        "rss_subscriptions": subscriptions,
+        "global_exclude_patterns": svc.global_exclude_patterns(),
+        "openlist_url": config.openlist.url,
+        "download_path": config.openlist.download_path,
+        "poll_interval_seconds": config.rss.interval_time,
+        "max_download_retries": config.rss.max_download_retries,
+        "mikan_base_url": config.mikan.base_url,
+        "rss_status": svc.rss_status(),
+        "tasks": [task.model_dump(mode="json") for task in svc.list_downloads()],
+    }
+
+
+@router.get("/ui/settings")
+async def ui_settings() -> dict:
+    """Return settings safe for the browser settings dialog."""
+    return {
+        "global_exclude_patterns": BackendApiService.get().global_exclude_patterns(),
+        "llm": {
+            "provider_type": config.llm.provider_type,
+            "base_url": config.llm.openai_base_url,
+            "model": config.llm.openai_model,
+            "api_key_configured": bool(config.llm.openai_api_key),
+            "tmdb_language": config.llm.tmdb_language,
+            "metadata_parser_provider": config.metadata_parser.provider,
+        },
+        "download_path": config.openlist.download_path,
+        "openlist_url": config.openlist.url,
+        "rename_format": config.openlist.rename_format,
+        "poll_interval_seconds": config.rss.interval_time,
+        "max_download_retries": config.rss.max_download_retries,
+        "mikan_base_url": config.mikan.base_url,
+    }
+
+
+@router.get("/ui/logs")
+async def ui_logs(limit: int = 300) -> dict[str, object]:
+    """Return a bounded tail of sanitized OpenList-Ani runtime logs."""
+    bounded_limit = max(1, min(limit, 1000))
+    return {
+        "lines": read_recent_logs(bounded_limit),
+        "limit": bounded_limit,
+    }
+
+
+@router.post("/ui/settings")
+async def ui_update_settings(request: UISettingsRequest) -> dict:
+    """Persist global filters and LLM settings from the browser dialog."""
+    svc = BackendApiService.get()
+
+    requested_path = (
+        request.download_path.strip()
+        if request.download_path is not None
+        else config.openlist.download_path
+    )
+    requested_openlist_url = (
+        request.openlist_url.strip()
+        if request.openlist_url is not None
+        else config.openlist.url
+    )
+    requested_format = (
+        request.rename_format.strip()
+        if request.rename_format is not None
+        else config.openlist.rename_format
+    )
+    requested_interval = (
+        request.poll_interval_seconds
+        if request.poll_interval_seconds is not None
+        else config.rss.interval_time
+    )
+    requested_max_retries = (
+        request.max_download_retries
+        if request.max_download_retries is not None
+        else config.rss.max_download_retries
+    )
+    requested_mikan_base_url = (
+        request.mikan_base_url.strip()
+        if request.mikan_base_url is not None
+        else config.mikan.base_url
+    )
+    if request.mikan_base_url is not None:
+        requested_mikan_base_url = _normalize_http_url(
+            requested_mikan_base_url,
+            label="Mikan 地址",
+        )
+    format_ok, format_error = svc.validate_rename_format(requested_format)
+    if not format_ok:
+        raise HTTPException(status_code=400, detail=format_error)
+    if request.openlist_url is not None:
+        url_ok, url_result = await svc.validate_openlist_url(requested_openlist_url)
+        if not url_ok:
+            raise HTTPException(status_code=400, detail=url_result)
+        requested_openlist_url = url_result
+    if request.download_path is not None or request.openlist_url is not None:
+        if request.openlist_url is not None:
+            path_ok, path_result = await svc.validate_download_path_at_url(
+                requested_openlist_url, requested_path
+            )
+        else:
+            path_ok, path_result = await svc.validate_download_path(requested_path)
+        if not path_ok:
+            raise HTTPException(status_code=400, detail=path_result)
+        requested_path = path_result
+
+    if (
+        request.openlist_url is not None
+        or request.download_path is not None
+        or request.rename_format is not None
+    ):
+        config.update_openlist_settings(
+            openlist_url=requested_openlist_url,
+            download_path=requested_path,
+            rename_format=requested_format,
+        )
+        svc.update_runtime_openlist_url(requested_openlist_url)
+        svc.update_runtime_openlist_settings(
+            download_path=requested_path,
+            rename_format=requested_format,
+        )
+    if request.poll_interval_seconds is not None:
+        config.update_rss_settings(
+            interval_time=requested_interval,
+            max_download_retries=requested_max_retries,
+        )
+        svc.update_runtime_rss_interval(requested_interval)
+        svc.update_runtime_max_download_retries(requested_max_retries)
+    elif request.max_download_retries is not None:
+        config.update_rss_settings(max_download_retries=requested_max_retries)
+        svc.update_runtime_max_download_retries(requested_max_retries)
+    svc.update_global_exclude_patterns(request.global_exclude_patterns)
+    config.update_llm_settings(
+        provider_type=request.llm_provider_type,
+        api_key=request.llm_api_key or None,
+        base_url=request.llm_base_url,
+        model=request.llm_model,
+        tmdb_language=request.tmdb_language,
+        metadata_parser_provider=request.metadata_parser_provider,
+    )
+    if request.mikan_base_url is not None:
+        config.update_mikan_settings(base_url=requested_mikan_base_url)
+    return {
+        "success": True,
+        "message": "设置已保存；LLM/解析器相关修改将在服务重启后生效。",
+        "requires_restart": True,
+        "mikan_base_url": config.mikan.base_url,
+    }
+
+
+@router.post("/ui/mikan/search")
+async def ui_mikan_search(request: MikanSearchRequest) -> dict[str, object]:
+    """Search the configured Mikan-compatible site from the web UI."""
+    base_url = (
+        _normalize_http_url(request.base_url, label="Mikan 地址")
+        if request.base_url
+        else None
+    )
+    result = await BackendApiService.get().search_mikan(
+        request.keyword,
+        base_url=base_url,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=502, detail=result.get("message", "Mikan 搜索失败"))
+    return result
+
+
+@router.post("/ui/mikan/groups")
+async def ui_mikan_groups(request: MikanGroupsRequest) -> dict[str, object]:
+    """List subtitle groups for a selected Mikan bangumi."""
+    base_url = (
+        _normalize_http_url(request.base_url, label="Mikan 地址")
+        if request.base_url
+        else None
+    )
+    result = await BackendApiService.get().list_mikan_groups(
+        request.bangumi_id,
+        base_url=base_url,
+    )
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message", "Mikan 字幕组读取失败"),
+        )
+    return result
+
+
+@router.post("/ui/mikan/rss")
+async def ui_mikan_rss(request: MikanRSSRequest) -> dict[str, object]:
+    """Build a group-specific RSS URL for the existing add/preview flow."""
+    base_url = (
+        _normalize_http_url(request.base_url, label="Mikan 地址")
+        if request.base_url
+        else None
+    )
+    return BackendApiService.get().mikan_rss_url(
+        request.bangumi_id,
+        request.subgroup_id,
+        base_url=base_url,
+    )
+
+
+@router.post("/ui/scan")
+async def ui_scan_now() -> dict[str, object]:
+    """Run the RSS scanner immediately instead of waiting for its timer."""
+    svc = BackendApiService.get()
+    return await svc.scan_rss_now()
+
+
+@router.post("/ui/rss")
+async def ui_add_rss(request: AddRSSRequest) -> dict:
+    """Validate, persist and activate a new RSS subscription."""
+    if not request.confirmed:
+        raise HTTPException(status_code=409, detail="请先完成 RSS 识别预览，再点击确认保存")
+    svc = BackendApiService.get()
+    parsed = await svc.parse_rss(request.url, limit=1)
+    if not parsed.success:
+        raise HTTPException(status_code=400, detail=parsed.message or "RSS 解析失败")
+
+    metadata = await svc.resolve_rss_subscription(request.url, request.name)
+    success, message, urls = svc.add_rss_subscription(
+        request.url,
+        name=str(metadata.get("name", "") or request.name).strip(),
+        anime_name=(request.anime_name.strip() or request.name.strip()),
+        download_directory_name=request.download_directory_name.strip(),
+        tmdb_id=metadata.get("tmdb_id"),
+        poster_url=str(metadata.get("poster_url", "") or ""),
+        season=request.season or 1,
+        exclude_patterns=normalize_exclude_patterns(request.exclude_patterns),
+    )
+    preview = parsed.entries[0].title if parsed.entries else ""
+    scan_scheduled = False
+    if success:
+        scan_scheduled = svc.schedule_rss_scan_for_url(request.url)
+        message = (
+            "RSS 已保存，已立即触发该订阅扫描；新条目也会继续按轮询周期检查。"
+            if scan_scheduled
+            else "RSS 已保存，但当前未能启动立即扫描；新条目会按轮询周期检查。"
+        )
+    return {
+        "success": success,
+        "message": message,
+        "urls": urls,
+        "preview": preview,
+        "name": metadata.get("name", "") or request.name.strip(),
+        "anime_name": request.anime_name.strip() or request.name.strip(),
+        "download_directory_name": request.download_directory_name.strip(),
+        "tmdb_id": metadata.get("tmdb_id"),
+        "poster_url": metadata.get("poster_url", ""),
+        "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
+        "scan_scheduled": scan_scheduled,
+    }
+
+
+@router.post("/ui/rss/preview")
+async def ui_preview_rss(request: RSSPreviewRequest) -> dict:
+    """Fetch and identify an RSS without saving it."""
+    svc = BackendApiService.get()
+    preview = await svc.preview_rss_subscription(
+        request.url,
+        preferred_name=request.name,
+        preferred_anime_name=request.anime_name,
+        preferred_download_directory_name=request.download_directory_name,
+        exclude_patterns=request.exclude_patterns,
+    )
+    if not preview.get("success"):
+        raise HTTPException(
+            status_code=400,
+            detail=preview.get("message", "RSS 解析失败"),
+        )
+    return preview
+
+
+@router.post("/ui/rss/filter")
+async def ui_update_global_rss_filter(request: GlobalRSSFilterRequest) -> dict:
+    """Update the global RSS title exclusion list."""
+    svc = BackendApiService.get()
+    return svc.update_global_exclude_patterns(request.exclude_patterns)
+
+
+@router.post("/ui/rss/toggle")
+async def ui_toggle_rss(request: ToggleRSSRequest) -> dict:
+    """Pause or resume a persisted RSS subscription without deleting it."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.update_rss_subscription(
+        request.url, enabled=request.enabled
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {"success": True, "message": message, "urls": urls}
+
+
+@router.post("/ui/rss/exclude")
+async def ui_update_rss_exclude(request: AddRSSRequest) -> dict:
+    """Update only one subscription's title exclusions."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.update_rss_subscription(
+        request.url,
+        exclude_patterns=normalize_exclude_patterns(request.exclude_patterns),
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {
+        "success": True,
+        "message": "单个 RSS 排除规则已保存，下一次扫描立即生效",
+        "urls": urls,
+        "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
+    }
+
+
+@router.post("/ui/rss/correct")
+async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
+    """Correct an existing RSS URL and its metadata in one operation."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.correct_rss_subscription(
+        request.original_url,
+        url=request.url,
+        name=request.name,
+        anime_name=request.anime_name or request.name,
+        download_directory_name=request.download_directory_name,
+        tmdb_id=request.tmdb_id,
+        season=request.season,
+        poster_url=request.poster_url,
+        exclude_patterns=request.exclude_patterns,
+    )
+    if not success:
+        raise HTTPException(status_code=409, detail=message)
+    return {"success": True, "message": message, "urls": urls}
+
+
+@router.post("/ui/rss/metadata")
+async def ui_refresh_rss_metadata(request: AddRSSRequest) -> dict:
+    """Re-identify an existing RSS subscription and persist its metadata."""
+    svc = BackendApiService.get()
+    result = await svc.refresh_rss_subscription(
+        request.url,
+        preferred_name=request.name,
+        preferred_tmdb_id=request.tmdb_id,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=404, detail=result.get("error", "RSS 不存在"))
+    return result
+
+
+@router.delete("/ui/rss")
+@router.post("/ui/rss/remove")
+async def ui_remove_rss(request: AddRSSRequest) -> dict:
+    """Remove an RSS source and stop monitoring it immediately."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.remove_rss_url(request.url)
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {"success": True, "message": message, "urls": urls}
+
+
+@router.get("/ui/uploads/{filename}", include_in_schema=False)
+async def serve_uploaded_torrent(filename: str) -> FileResponse:
+    """Serve an uploaded torrent to OpenList on the same machine."""
+    filename = unquote(filename)
+    if not TORRENT_NAME.fullmatch(filename):
+        raise HTTPException(status_code=404, detail="Not found")
+    target = (UPLOAD_DIR / filename).resolve()
+    if target.parent != UPLOAD_DIR.resolve() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(target, media_type="application/x-bittorrent")
+
+
+@router.post("/ui/torrent")
+async def ui_upload_torrent(request: Request) -> dict:
+    """Upload a torrent, resolve its title, and start the OpenList task."""
+    content_length = int(request.headers.get("content-length", "0"))
+    if content_length <= 0 or content_length > MAX_TORRENT_BYTES:
+        raise HTTPException(status_code=400, detail="种子文件为空或超过 50 MB 限制")
+    if not request.headers.get("content-type", "").lower().startswith(
+        "application/x-bittorrent"
+    ):
+        raise HTTPException(status_code=400, detail="请上传 .torrent 文件")
+
+    filename = unquote(request.headers.get("x-filename", ""))
+    if not filename.lower().endswith(".torrent"):
+        raise HTTPException(status_code=400, detail="只支持 .torrent 文件")
+    blob = await request.body()
+    if len(blob) > MAX_TORRENT_BYTES:
+        raise HTTPException(status_code=400, detail="种子文件超过 50 MB 限制")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    stored = f"{uuid.uuid4().hex}.torrent"
+    target = UPLOAD_DIR / stored
+    target.write_bytes(blob)
+    internal_url = (
+        f"http://{_internal_backend_host()}:{config.backend.port}"
+        f"/api/ui/uploads/{stored}"
+    )
+
+    svc = BackendApiService.get()
+    try:
+        resolved = await svc.resolve_torrent(internal_url)
+        if not resolved.success:
+            raise HTTPException(status_code=400, detail=resolved.message or "种子解析失败")
+        title = unquote(request.headers.get("x-title", "")).strip()
+        title = title[:200] or (resolved.title or Path(filename).stem)[:200]
+        success, message, task = await svc.create_download(internal_url, title)
+        if not success:
+            raise HTTPException(status_code=409, detail=message)
+        return {
+            "success": True,
+            "message": f"已创建迅雷任务：{title}",
+            "task": task.model_dump(mode="json") if task else None,
+        }
+    except Exception:
+        target.unlink(missing_ok=True)
+        raise
 
 
 @router.post("/restart")
@@ -42,7 +500,7 @@ async def restart_service() -> RestartResponse:
 async def add_rss_url(request: AddRSSRequest) -> AddRSSResponse:
     """Add a new RSS monitoring URL."""
     svc = BackendApiService.get()
-    success, message, urls = svc.add_rss_url(request.url)
+    success, message, urls = svc.add_rss_url(request.url, name=request.name)
     return AddRSSResponse(success=success, message=message, urls=urls)
 
 

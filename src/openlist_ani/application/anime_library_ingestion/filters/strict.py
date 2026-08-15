@@ -33,6 +33,7 @@ def compute_rename_stem(
     fansub: str | None = None,
     quality: str | None = None,
     languages: str = "",
+    version: int = 1,
 ) -> str:
     """Compute the rename stem from metadata and a format string.
 
@@ -58,6 +59,7 @@ def compute_rename_stem(
         fansub=fansub,
         quality=quality,
         languages=languages,
+        version=version,
         include_version=False,
     )
 
@@ -83,6 +85,7 @@ def _stem_from_db_record(
         fansub=record.get("fansub"),
         quality=record.get("quality"),
         languages=record.get("languages", ""),
+        version=record.get("version") or 1,
     )
 
 
@@ -151,6 +154,12 @@ class StrictRenameFilter:
         if skipped:
             logger.debug(f"Strict filter: {len(accepted)} accepted, {skipped} skipped")
         return accepted
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._base_path = download_path
+        self._rename_format = rename_format
 
     # ── per-group filtering ──────────────────────────────────────────
 

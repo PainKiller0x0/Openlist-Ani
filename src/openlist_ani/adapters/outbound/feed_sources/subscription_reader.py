@@ -1,5 +1,8 @@
 import asyncio
 
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    filter_releases_by_title,
+)
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.logger import logger
 
@@ -18,16 +21,70 @@ class ReleaseFeedReader:
         self,
         urls: list[str],
         factory: FeedSourceFactory | None = None,
+        exclusion_patterns: dict[str, list[str]] | None = None,
+        global_exclusion_patterns: list[str] | None = None,
+        anime_names: dict[str, str] | None = None,
+        download_directory_names: dict[str, str] | None = None,
     ) -> None:
-        self._urls = urls
+        self._urls = list(dict.fromkeys(urls))
         self._factory = factory or FeedSourceFactory()
+        self._exclusion_patterns = dict(exclusion_patterns or {})
+        self._global_exclusion_patterns = list(global_exclusion_patterns or [])
+        self._anime_names = dict(anime_names or {})
+        self._download_directory_names = dict(download_directory_names or {})
+
+    def set_urls(self, urls: list[str]) -> None:
+        """Replace monitored URLs without restarting the backend process."""
+        self._urls = list(dict.fromkeys(urls))
+
+    def set_exclusion_patterns(self, patterns_by_url: dict[str, list[str]]) -> None:
+        """Replace per-subscription title exclusions at runtime."""
+        self._exclusion_patterns = {
+            url: list(patterns)
+            for url, patterns in patterns_by_url.items()
+            if patterns
+        }
+
+    def set_global_exclusion_patterns(self, patterns: list[str]) -> None:
+        """Replace global title exclusions at runtime."""
+        self._global_exclusion_patterns = list(patterns)
+
+    def set_anime_names(self, names_by_url: dict[str, str]) -> None:
+        """Replace explicit per-subscription anime-name overrides."""
+        self._anime_names = {
+            url: name.strip()
+            for url, name in names_by_url.items()
+            if name and name.strip()
+        }
+
+    def set_download_directory_names(self, names_by_url: dict[str, str]) -> None:
+        """Replace explicit per-subscription download directory names."""
+        self._download_directory_names = {
+            url: name.strip()
+            for url, name in names_by_url.items()
+            if name and name.strip()
+        }
 
     async def fetch_new_releases(self) -> list[AnimeRelease]:
         """Fetch releases from all configured feeds."""
-        if not self._urls:
+        return await self._fetch_new_releases_from_urls(self._urls)
+
+    async def fetch_new_releases_for_urls(self, urls: list[str]) -> list[AnimeRelease]:
+        """Fetch releases only from the requested active feed URLs.
+
+        This is used after a subscription is saved so the new source can be
+        checked immediately without waiting for the next full RSS poll.
+        Unknown or paused URLs are ignored deliberately.
+        """
+        active_urls = set(self._urls)
+        selected = [url for url in dict.fromkeys(urls) if url in active_urls]
+        return await self._fetch_new_releases_from_urls(selected)
+
+    async def _fetch_new_releases_from_urls(self, urls: list[str]) -> list[AnimeRelease]:
+        if not urls:
             return []
 
-        fetches = self._build_fetch_tasks(self._urls)
+        fetches = self._build_fetch_tasks(urls)
         if not fetches:
             return []
 
@@ -61,9 +118,25 @@ class ReleaseFeedReader:
             if not self._is_valid_feed_result(url, result):
                 continue
 
-            for entry in result:
+            entries = [entry for entry in result if entry.download_url]
+            accepted, excluded = filter_releases_by_title(
+                entries,
+                [
+                    *self._global_exclusion_patterns,
+                    *self._exclusion_patterns.get(url, []),
+                ],
+            )
+            if excluded:
+                logger.info(
+                    f"RSS source excluded {len(excluded)} entr{'y' if len(excluded) == 1 else 'ies'} "
+                    "by per-subscription rules"
+                )
+            for entry in accepted:
                 if not entry.download_url:
                     continue
+                entry.source_url = url
+                entry.anime_name_override = self._anime_names.get(url)
+                entry.download_directory_name_override = self._download_directory_names.get(url)
                 new_entries.append(entry)
         return new_entries
 

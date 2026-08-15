@@ -47,7 +47,7 @@ url = "http://localhost:5244"
 token = ""
 download_path = "/PikPak/Anime"
 offline_download_tool = "QBITTORRENT"
-rename_format = "{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}"
+rename_format = "{anime_name} - S{season:02d}E{episode:02d}"
 
 # ---------- 元数据解析与校验 ----------
 [metadata_parser]

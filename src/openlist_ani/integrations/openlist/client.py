@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
+from urllib.parse import urlsplit
 
 import aiohttp
 
@@ -24,7 +25,7 @@ class OpenListClient:
         max_retries: int = 3,
         retry_backoff_seconds: float = 0.8,
     ):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = self.normalize_base_url(base_url)
         self.token = token or ""
         self.headers = {
             "Content-Type": "application/json",
@@ -45,6 +46,24 @@ class OpenListClient:
         logger.debug(
             f"OpenListClient initialized with max {max_concurrent_requests} concurrent requests"
         )
+
+    @staticmethod
+    def normalize_base_url(base_url: str) -> str:
+        """Normalize and validate an OpenList HTTP(S) base URL."""
+        normalized = str(base_url or "").strip().rstrip("/")
+        parsed = urlsplit(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("OpenList 地址必须是带 http:// 或 https:// 的完整地址")
+        if parsed.query or parsed.fragment:
+            raise ValueError("OpenList 地址不能包含查询参数或片段")
+        return normalized
+
+    def update_base_url(self, base_url: str) -> str:
+        """Switch this shared client to a validated OpenList endpoint."""
+        normalized = self.normalize_base_url(base_url)
+        self.base_url = normalized
+        logger.info(f"OpenList endpoint updated to {normalized}")
+        return normalized
 
     async def start(self) -> None:
         async with self._semaphore:
@@ -122,6 +141,7 @@ class OpenListClient:
         path: str,
         tool: str | OfflineDownloadTool,
         delete_policy: str = "delete_always",
+        name: str = "",
     ) -> list[OpenlistTask] | None:
         """Add offline download tasks.
 
@@ -144,6 +164,8 @@ class OpenListClient:
             "tool": str(tool),
             "delete_policy": delete_policy,
         }
+        if name:
+            payload["name"] = name
 
         data = await self._post(url, payload)
         if data and data.get("code") == 200:
@@ -246,6 +268,21 @@ class OpenListClient:
             msg = data.get("message") if data else self.UNKNOWN_ERROR_MESSAGE
             logger.warning(f"Failed to list files at {path}: {msg}")
             return None
+
+    async def validate_path(self, path: str) -> tuple[bool, str]:
+        """Check that an OpenList directory is reachable and listable."""
+        normalized = path.strip()
+        if not normalized.startswith("/"):
+            return False, "下载根目录必须是 OpenList 的绝对路径，以 / 开头"
+        normalized = "/" + normalized.lstrip("/")
+        if len(normalized) > 1:
+            normalized = normalized.rstrip("/")
+        if "\x00" in normalized:
+            return False, "下载根目录包含非法字符"
+        files = await self.list_files(normalized)
+        if files is None:
+            return False, f"OpenList 无法访问目录：{normalized}"
+        return True, normalized
 
     async def rename_file(self, full_path: str, new_name: str) -> bool:
         """Rename a file at *full_path* to *new_name*."""

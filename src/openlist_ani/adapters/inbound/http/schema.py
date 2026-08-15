@@ -9,6 +9,111 @@ class AddRSSRequest(BaseModel):
     """Request body for adding an RSS monitoring URL."""
 
     url: str = Field(..., description="RSS feed URL to monitor")
+    name: str = Field(default="", max_length=200, description="Optional anime display name")
+    anime_name: str = Field(default="", max_length=200, description="Optional download anime_name override")
+    download_directory_name: str = Field(default="", max_length=200, description="Optional download directory name override")
+    tmdb_id: int | None = Field(default=None, description="Optional TMDB TV show id")
+    season: int | None = Field(default=None, ge=0, le=99)
+    exclude_patterns: str = Field(
+        default="",
+        max_length=2000,
+        description="Pipe-separated title exclusion regex patterns",
+    )
+    confirmed: bool = Field(
+        default=False,
+        description="Whether the user confirmed the preview before saving",
+    )
+
+
+class RSSPreviewRequest(BaseModel):
+    """Request body for previewing an RSS before persistence."""
+
+    url: str = Field(..., description="RSS feed URL")
+    name: str = Field(default="", max_length=200, description="Optional display name")
+    anime_name: str = Field(default="", max_length=200, description="Optional download anime_name override")
+    download_directory_name: str = Field(default="", max_length=200, description="Optional download directory name override")
+    exclude_patterns: str = Field(
+        default="", max_length=2000, description="Pipe-separated title exclusions"
+    )
+
+
+class GlobalRSSFilterRequest(BaseModel):
+    """Request body for the global RSS title exclusion list."""
+
+    exclude_patterns: str = Field(
+        default="", max_length=4000, description="Pipe-separated title exclusions"
+    )
+
+
+class ToggleRSSRequest(BaseModel):
+    """Request body for pausing or resuming an RSS subscription."""
+
+    url: str = Field(..., description="RSS feed URL")
+    enabled: bool = Field(..., description="Whether the subscription should keep polling")
+
+
+class CorrectRSSRequest(BaseModel):
+    """Request body for correcting an existing RSS subscription."""
+
+    original_url: str = Field(..., description="Current persisted RSS URL")
+    url: str = Field(..., description="Corrected RSS URL")
+    name: str = Field(default="", max_length=200)
+    anime_name: str = Field(default="", max_length=200)
+    download_directory_name: str = Field(default="", max_length=200)
+    tmdb_id: int | None = Field(default=None)
+    season: int | None = Field(default=None, ge=0, le=99)
+    poster_url: str = Field(default="", max_length=1000)
+    exclude_patterns: str = Field(default="", max_length=2000)
+
+
+class UISettingsRequest(BaseModel):
+    """Request body for the built-in settings dialog."""
+
+    global_exclude_patterns: str = Field(default="", max_length=4000)
+    openlist_url: str | None = Field(default=None, max_length=1000)
+    llm_provider_type: str | None = Field(default=None, max_length=50)
+    llm_api_key: str | None = Field(default=None, max_length=500)
+    llm_base_url: str | None = Field(default=None, max_length=1000)
+    llm_model: str | None = Field(default=None, max_length=200)
+    tmdb_language: str | None = Field(default=None, max_length=30)
+    metadata_parser_provider: str | None = Field(default=None, max_length=50)
+    download_path: str | None = Field(default=None, max_length=1000)
+    rename_format: str | None = Field(default=None, max_length=1000)
+    poll_interval_seconds: int | None = Field(default=None, ge=60, le=86400)
+    max_download_retries: int | None = Field(default=None, ge=0, le=100)
+    mikan_base_url: str | None = Field(default=None, max_length=1000)
+
+
+class MikanSearchRequest(BaseModel):
+    """Request body for searching the configured Mikan-compatible site."""
+
+    keyword: str = Field(..., min_length=1, max_length=200)
+    base_url: str | None = Field(default=None, max_length=1000)
+
+
+class MikanGroupsRequest(BaseModel):
+    """Request body for listing subtitle groups for one Mikan bangumi."""
+
+    bangumi_id: int = Field(..., ge=1)
+    base_url: str | None = Field(default=None, max_length=1000)
+
+
+class MikanRSSRequest(BaseModel):
+    """Request body for building a group-specific Mikan RSS URL."""
+
+    bangumi_id: int = Field(..., ge=1)
+    subgroup_id: int | None = Field(default=None, ge=1)
+    base_url: str | None = Field(default=None, max_length=1000)
+
+
+class RSSSubscriptionResponse(BaseModel):
+    url: str
+    name: str = ""
+    anime_name: str = ""
+    download_directory_name: str = ""
+    enabled: bool = True
+    tmdb_id: int | None = None
+    poster_url: str = ""
 
 
 class AddRSSResponse(BaseModel):

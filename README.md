@@ -166,6 +166,7 @@ openlist-ani-assistant
 
 ## 📖 文档
 
+- [内置追番入口](docs/追番入口.md)
 - [快速开始](https://github.com/TwooSix/Openlist-Ani/wiki/快速开始)
 - [PIP 安装指南](https://github.com/TwooSix/Openlist-Ani/wiki/PIP安装指南)
 - [Docker 部署指南](https://github.com/TwooSix/Openlist-Ani/wiki/Docker部署指南)

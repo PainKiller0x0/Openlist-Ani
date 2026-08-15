@@ -42,6 +42,7 @@ from openlist_ani.adapters.outbound.metadata_validator import (
 from openlist_ani.adapters.outbound.metadata_validator.tmdb import (
     create_tmdb_metadata_validator,
 )
+from openlist_ani.adapters.outbound.metadata_validator.tmdb.api import get_tmdb_client
 from openlist_ani.adapters.outbound.notifications import (
     NotificationManager,
     NotificationManagerFactory,
@@ -67,6 +68,7 @@ from openlist_ani.application.anime_library_ingestion.settings import (
 from openlist_ani.application.anime_library_ingestion.application_service import (
     AnimeLibraryApplicationService,
 )
+from openlist_ani.domain.anime_release import format_series_name
 from openlist_ani.integrations.openlist import OpenListClient, OpenListHealthCheck
 from openlist_ani.integrations.llm import LLMClientSettings, create_llm_client
 from openlist_ani.logger import FATAL_LEVEL, configure_logger, logger
@@ -110,6 +112,10 @@ async def run() -> None:
     settings = _create_pipeline_settings()
     metadata_parser = _create_metadata_parser()
     metadata_validator = _create_metadata_validator()
+    tmdb_client = get_tmdb_client(
+        api_key=config.llm.tmdb_api_key,
+        language=config.llm.tmdb_language,
+    )
     downloader = _create_downloader(openlist_client)
     file_renamer = _create_file_renamer(openlist_client)
     pipeline = AnimeLibraryIngestionPipeline(
@@ -121,7 +127,25 @@ async def run() -> None:
         metadata_parser=metadata_parser,
         metadata_validator=metadata_validator,
         settings=settings,
-        feed_reader=ReleaseFeedReader(list(config.rss.urls)),
+        feed_reader=ReleaseFeedReader(
+            list(config.rss.urls),
+            exclusion_patterns={
+                item.url: list(item.exclude_patterns)
+                for item in config.rss.subscriptions
+                if item.enabled
+            },
+            global_exclusion_patterns=list(config.rss.filter.exclude_patterns),
+            anime_names={
+                item.url: item.anime_name
+                for item in config.rss.subscriptions
+                if item.enabled and item.anime_name
+            },
+            download_directory_names={
+                item.url: item.download_directory_name
+                for item in config.rss.subscriptions
+                if item.enabled and item.download_directory_name
+            },
+        ),
         notifier=notification_manager,
     )
     await pipeline.start()
@@ -137,6 +161,27 @@ async def run() -> None:
             resolve_torrent_func=resolve_torrent,
             get_rss_urls=lambda: list(config.rss.urls),
             add_rss_url_func=config.add_rss_url,
+            remove_rss_url_func=config.remove_rss_url,
+            get_rss_subscriptions=lambda: [
+                item.model_dump(mode="json") for item in config.rss.subscriptions
+            ],
+            update_rss_subscription_func=config.update_rss_subscription,
+            get_global_exclude_patterns=lambda: list(
+                config.rss.filter.exclude_patterns
+            ),
+            update_global_exclude_patterns_func=lambda patterns: config.update_rss_filter(
+                exclude_patterns=patterns
+            ),
+            lookup_tmdb_show=lambda name: _lookup_tmdb_show(tmdb_client, name),
+            lookup_tmdb_show_by_id=lambda tmdb_id: _lookup_tmdb_show_by_id(
+                tmdb_client, tmdb_id
+            ),
+            validate_openlist_path=openlist_client.validate_path,
+            validate_openlist_url=lambda url: _validate_candidate_openlist_url(url),
+            validate_openlist_path_at_url=lambda url, path: _validate_candidate_openlist_path(
+                url, path
+            ),
+            update_openlist_url=openlist_client.update_base_url,
         )
     )
 
@@ -193,6 +238,43 @@ def _log_startup_summary() -> None:
 
 def _create_openlist_client() -> OpenListClient:
     return OpenListClient(base_url=config.openlist.url, token=config.openlist.token)
+
+
+async def _validate_candidate_openlist_url(url: str) -> tuple[bool, str]:
+    """Validate a candidate OpenList endpoint without changing the live client."""
+    try:
+        candidate = OpenListClient(base_url=url, token=config.openlist.token)
+    except ValueError as exc:
+        return False, str(exc)
+
+    try:
+        valid = await OpenListHealthCheck(
+            client=candidate,
+            base_url=candidate.base_url,
+            offline_download_tool=config.openlist.offline_download_tool,
+        ).validate()
+        return (
+            (True, candidate.base_url)
+            if valid
+            else (False, f"无法连接或验证 OpenList：{candidate.base_url}")
+        )
+    finally:
+        await candidate.close()
+
+
+async def _validate_candidate_openlist_path(
+    url: str, path: str
+) -> tuple[bool, str]:
+    """Validate a download path against a candidate OpenList endpoint."""
+    try:
+        candidate = OpenListClient(base_url=url, token=config.openlist.token)
+    except ValueError as exc:
+        return False, str(exc)
+
+    try:
+        return await candidate.validate_path(path)
+    finally:
+        await candidate.close()
 
 
 async def _validate_openlist(client: OpenListClient) -> bool:
@@ -280,6 +362,47 @@ def _create_validator_llm_client():
     )
 
 
+async def _lookup_tmdb_show(client, name: str) -> dict[str, object] | None:
+    """Return a conservative TV result and poster URL for subscription cards."""
+    results = await client.search_tv_show(name)
+    if not results:
+        return None
+    animation = [item for item in results if 16 in (item.get("genre_ids") or [])]
+    candidates = animation or results
+    item = candidates[0]
+    poster_path = item.get("poster_path") or ""
+    return {
+        "id": item.get("id"),
+        "name": format_series_name(
+            item.get("name") or item.get("original_name") or name,
+            item.get("first_air_date"),
+        ),
+        "first_air_date": item.get("first_air_date"),
+        "poster_url": (
+            f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
+        ),
+    }
+
+
+async def _lookup_tmdb_show_by_id(client, tmdb_id: int) -> dict[str, object] | None:
+    """Return the canonical name and poster for a known TMDB TV id."""
+    details = await client.get_tv_show_details(tmdb_id)
+    if not details:
+        return None
+    poster_path = details.get("poster_path") or ""
+    return {
+        "id": tmdb_id,
+        "name": format_series_name(
+            details.get("name") or details.get("original_name") or "",
+            details.get("first_air_date"),
+        ),
+        "first_air_date": details.get("first_air_date"),
+        "poster_url": (
+            f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
+        ),
+    }
+
+
 async def _setup_notifications() -> NotificationManager | None:
     """Start notification manager if configured."""
     notification_manager = NotificationManagerFactory().create(
@@ -308,6 +431,7 @@ def _create_pipeline_settings() -> AnimeLibraryIngestionSettings:
         download_path=config.openlist.download_path,
         rename_format=config.openlist.rename_format,
         rss_interval_seconds=config.rss.interval_time,
+        max_download_retries=config.rss.max_download_retries,
         strict_filtering=config.rss.strict,
         metadata_filter=MetadataFilterSettings(
             exclude_fansub=list(config.rss.filter.exclude_fansub),

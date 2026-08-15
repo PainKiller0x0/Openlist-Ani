@@ -90,6 +90,15 @@ class RSSStage(PipelineStage[None]):
         self._settings = settings
         self._interval_seconds = interval_seconds
         self._task_reservation = task_reservation
+        self._scan_lock = asyncio.Lock()
+        self._scan_in_progress = False
+        self._last_scan_started_at: str | None = None
+        self._last_scan_finished_at: str | None = None
+        self._last_scan_status = "never"
+        self._last_scan_message = "尚未扫描"
+        self._last_scan_new_count = 0
+        self._next_scan_at: str | None = None
+        self._interval_changed = asyncio.Event()
         self._metadata_cache: TTLCache[str, ParseResult] = TTLCache(
             maxsize=self._METADATA_CACHE_MAXSIZE,
             ttl=self._METADATA_CACHE_TTL,
@@ -98,9 +107,24 @@ class RSSStage(PipelineStage[None]):
     async def process_item(self, item: None) -> None:
         return None
 
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._filter_chain.update_runtime_openlist_settings(
+            download_path=download_path,
+            rename_format=rename_format,
+        )
+
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        self._interval_seconds = None
+        object.__setattr__(self._settings, "rss_interval_seconds", float(interval_seconds))
+        self._set_next_scan_at()
+        self._interval_changed.set()
+
     async def process_batch(self) -> None:
         try:
-            await self._scan_once()
+            async with self._scan_lock:
+                await self._run_scan()
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -108,18 +132,105 @@ class RSSStage(PipelineStage[None]):
 
         await self._sleep_until_next_scan()
 
-    async def _scan_once(self) -> None:
-        rss_logger.info("RSS scan started")
-        entries = self._deduplicate(await self._feed_reader.fetch_new_releases())
+    async def scan_now(self, source_url: str | None = None) -> dict[str, object]:
+        """Run one scan immediately, optionally limited to one RSS source.
+
+        Waiting for the lock is intentional: if the periodic scan is already
+        running, the newly saved subscription is checked right after it
+        instead of being silently skipped.
+        """
+        async with self._scan_lock:
+            await self._run_scan(source_url=source_url)
+        self._set_next_scan_at()
+        return self.status()
+
+    def status(self) -> dict[str, object]:
+        """Return UI-safe status for the automatic RSS scanner."""
+        return {
+            "enabled": True,
+            "running": self._scan_in_progress,
+            "status": self._last_scan_status,
+            "message": self._last_scan_message,
+            "last_scan_started_at": self._last_scan_started_at,
+            "last_scan_finished_at": self._last_scan_finished_at,
+            "last_scan_new_count": self._last_scan_new_count,
+            "next_scan_at": self._next_scan_at,
+            "interval_seconds": self._scan_interval_seconds(),
+        }
+
+    async def _run_scan(self, source_url: str | None = None) -> None:
+        self._scan_in_progress = True
+        self._last_scan_status = "running"
+        self._last_scan_message = (
+            f"正在立即检查新订阅：{source_url}"
+            if source_url
+            else "正在拉取 RSS 并检查新条目"
+        )
+        self._last_scan_started_at = datetime.now().astimezone().isoformat(
+            timespec="seconds"
+        )
+        try:
+            self._last_scan_new_count = await self._scan_once(source_url=source_url)
+            self._last_scan_status = "success"
+            self._last_scan_message = (
+                f"扫描完成，发现 {self._last_scan_new_count} 个新条目"
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            self._last_scan_status = "error"
+            self._last_scan_message = f"扫描失败：{error}"
+            raise
+        finally:
+            self._scan_in_progress = False
+            self._last_scan_finished_at = datetime.now().astimezone().isoformat(
+                timespec="seconds"
+            )
+            self._set_next_scan_at()
+
+    def _scan_interval_seconds(self) -> float:
+        return float(
+            self._interval_seconds
+            if self._interval_seconds is not None
+            else self._settings.rss_interval_seconds
+        )
+
+    def _set_next_scan_at(self) -> None:
+        if self._last_scan_finished_at is None:
+            return
+        next_at = datetime.now().astimezone().timestamp() + self._scan_interval_seconds()
+        self._next_scan_at = datetime.fromtimestamp(next_at).astimezone().isoformat(
+            timespec="seconds"
+        )
+
+    async def _scan_once(self, source_url: str | None = None) -> int:
+        if source_url:
+            rss_logger.info(f"RSS targeted scan started: source={source_url}")
+            fetch_for_urls = getattr(
+                self._feed_reader, "fetch_new_releases_for_urls", None
+            )
+            if fetch_for_urls is None:
+                rss_logger.warning(
+                    "Feed reader does not support targeted scans; "
+                    "falling back to a full RSS scan"
+                )
+                fetched = await self._feed_reader.fetch_new_releases()
+            else:
+                fetched = await fetch_for_urls([source_url])
+        else:
+            rss_logger.info("RSS scan started")
+            fetched = await self._feed_reader.fetch_new_releases()
+        entries = self._deduplicate(fetched)
         processable, prefilter_summary = await self._filter_downloaded(entries)
         if not processable:
             self._log_scan_completed(0, prefilter_summary)
-            return
+            return 0
 
         self._log_scan_completed(len(processable), prefilter_summary)
         enriched = await self._parse_and_enrich(processable)
         accepted = await self._filter_candidates(enriched)
         await self._queue_download_candidates(accepted)
+        return len(accepted)
 
     async def _parse_and_enrich(
         self, entries: list[AnimeRelease]
@@ -172,11 +283,13 @@ class RSSStage(PipelineStage[None]):
             rss_logger.info(f"RSS scan completed: no new releases{scan_suffix}")
 
     async def _sleep_until_next_scan(self) -> None:
-        await asyncio.sleep(
-            self._interval_seconds
-            if self._interval_seconds is not None
-            else self._settings.rss_interval_seconds
-        )
+        self._interval_changed.clear()
+        try:
+            await asyncio.wait_for(
+                self._interval_changed.wait(), timeout=self._scan_interval_seconds()
+            )
+        except asyncio.TimeoutError:
+            pass
 
     async def _reserve_download_task(self, entry: AnimeRelease) -> TaskMemento | None:
         return await self._task_reservation.reserve_download_task(
@@ -267,7 +380,7 @@ class RSSStage(PipelineStage[None]):
             return False
 
         meta = result.result
-        entry.anime_name = meta.anime_name
+        entry.anime_name = entry.anime_name_override or meta.anime_name
         entry.season = meta.season
         entry.episode = meta.episode
         entry.quality = meta.quality
@@ -334,6 +447,11 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
                     ),
                 )
             )
+            if memento.state == DownloadState.CANCELLED:
+                download_logger.info(
+                    f"Download result ignored for cancelled task: {label}"
+                )
+                return
             memento.state = DownloadState.DOWNLOADED
             memento.downloader = downloaded.downloader_memento
             memento.pipeline = PipelineMemento(
@@ -362,6 +480,12 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
     ) -> TaskMemento | None:
         existing = self._task_registry.get_task(item.workflow_id)
         if existing is not None:
+            if existing.state in {
+                DownloadState.COMPLETED,
+                DownloadState.FAILED,
+                DownloadState.CANCELLED,
+            }:
+                return None
             return existing
 
         download_logger.warning(
@@ -387,6 +511,11 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
         memento: TaskMemento,
         error: Exception,
     ) -> None:
+        if memento.state == DownloadState.CANCELLED:
+            download_logger.info(
+                f"Retry skipped for cancelled task: {memento.release.title}"
+            )
+            return
         memento.retry.last_error = str(error)
         if memento.retry.retry_count < memento.retry.max_retries:
             memento.retry.retry_count += 1
@@ -432,6 +561,11 @@ class RenameStage(PipelineStage[PipelineContext[DownloadedFile]]):
         self._task_store = task_store
         self._task_lookup = task_lookup
         self._filename_planner = filename_planner
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._filename_planner.update_rename_format(rename_format)
 
     async def process_item(self, item: PipelineContext[DownloadedFile]) -> None:
         downloaded = item.payload

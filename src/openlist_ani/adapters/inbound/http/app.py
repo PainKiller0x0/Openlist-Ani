@@ -6,8 +6,10 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 from openlist_ani.logger import logger
+from .frontend import INDEX_HTML
 from .router import router
 
 
@@ -32,4 +34,20 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(router)
+
+    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
+    async def index() -> HTMLResponse:
+        """Serve the user-facing RSS/torrent entry point."""
+        # The page is embedded in the service and changes whenever the backend
+        # is upgraded.  Prevent browsers and reverse proxies from keeping an
+        # older UI after a deployment.
+        return HTMLResponse(
+            content=INDEX_HTML,
+            headers={
+                "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
     return app

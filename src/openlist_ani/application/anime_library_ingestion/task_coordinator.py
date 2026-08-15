@@ -10,7 +10,7 @@ from openlist_ani.application.anime_library_ingestion.ports import (
 )
 from openlist_ani.application.common import OAniEvent, OAniEventType
 from openlist_ani.domain.anime_release import AnimeRelease
-from openlist_ani.domain.download_task.memento import TaskMemento
+from openlist_ani.domain.download_task.memento import RetryMemento, TaskMemento
 from openlist_ani.domain.download_task.task import DownloadState, TERMINAL_STATES
 
 
@@ -24,11 +24,13 @@ class TaskCoordinator:
         task_store: TaskMementoStorePort,
         event_publisher: EventPublisherPort,
         default_base_path: str,
+        max_retries: int = 3,
         terminal_history_limit: int = 100,
     ) -> None:
         self._task_store = task_store
         self._event_publisher = event_publisher
         self._default_base_path = default_base_path
+        self._max_retries = max(0, int(max_retries))
         self._tasks: dict[str, TaskMemento] = {}
         self._terminal_history: OrderedDict[str, TaskMemento] = OrderedDict()
         self._terminal_history_limit = terminal_history_limit
@@ -61,6 +63,47 @@ class TaskCoordinator:
     def atomic_flush(self) -> None:
         self._task_store.atomic_flush()
 
+    def update_default_base_path(self, base_path: str) -> None:
+        """Use a new destination for tasks reserved after this point."""
+        self._default_base_path = base_path
+
+    def update_max_retries(self, max_retries: int) -> None:
+        """Apply the retry limit to newly created and active tasks."""
+        self._max_retries = max(0, int(max_retries))
+        for task in self.list_tasks():
+            if task.state in self._TERMINAL_STATES:
+                continue
+            task.retry.max_retries = self._max_retries
+            task.touch()
+            self.save(task)
+
+    def cancel_tasks_for_source(
+        self,
+        source_url: str,
+        *,
+        anime_names: set[str] | None = None,
+        reason: str = "RSS subscription stopped",
+    ) -> int:
+        """Cancel queued and failed tasks belonging to an RSS subscription."""
+        names = {name.strip() for name in (anime_names or set()) if name.strip()}
+        cancelled = 0
+        for task in self.list_tasks():
+            if task.state == DownloadState.COMPLETED:
+                continue
+            same_source = task.release.source_url == source_url
+            legacy_name = (
+                task.release.source_url is None
+                and task.release.anime_name in names
+            )
+            if not (same_source or legacy_name):
+                continue
+            task.state = DownloadState.CANCELLED
+            task.retry.last_error = reason
+            task.touch()
+            self.save(task)
+            cancelled += 1
+        return cancelled
+
     async def reserve_download_task(
         self,
         release: AnimeRelease,
@@ -75,6 +118,7 @@ class TaskCoordinator:
                 state=DownloadState.PENDING,
                 release=release,
                 base_path=base_path or self._default_base_path,
+                retry=RetryMemento(max_retries=self._max_retries),
             )
             self.save(task)
             await self._event_publisher.publish(
@@ -92,8 +136,9 @@ class TaskCoordinator:
     def is_downloading(self, release: AnimeRelease) -> bool:
         return any(
             task.release.download_url == release.download_url
-            and task.state not in self._TERMINAL_STATES
-            for task in self._tasks.values()
+            and task.state not in {DownloadState.COMPLETED, DownloadState.CANCELLED}
+            and (task.state != DownloadState.FAILED or release.source_url is not None)
+            for task in self.list_tasks()
         )
 
     def list_tasks(self) -> list[TaskMemento]:

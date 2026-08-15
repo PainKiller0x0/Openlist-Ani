@@ -7,6 +7,11 @@ from openlist_ani.application.anime_library_ingestion.application_service import
 )
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.domain.download_task.memento import TaskMemento
+from openlist_ani.application.anime_library_ingestion.exclusions import (
+    normalize_exclude_patterns,
+)
+from openlist_ani.adapters.outbound.configuration import config
+from openlist_ani.assistant.skill_support.mikan_client import MikanClient
 
 from .schema import (
     DownloadTaskResponse,
@@ -92,6 +97,253 @@ class BackendApiService:
 
     def add_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
         return self._application_service.add_rss_url(url)
+
+    async def resolve_rss_subscription(
+        self, url: str, preferred_name: str = ""
+    ) -> dict[str, object]:
+        return await self._application_service.resolve_rss_subscription(
+            url, preferred_name
+        )
+
+    async def refresh_rss_subscription(
+        self,
+        url: str,
+        *,
+        preferred_name: str = "",
+        preferred_tmdb_id: int | None = None,
+    ) -> dict[str, object]:
+        return await self._application_service.refresh_rss_subscription(
+            url,
+            preferred_name=preferred_name,
+            preferred_tmdb_id=preferred_tmdb_id,
+        )
+
+    def add_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str = "",
+        anime_name: str = "",
+        download_directory_name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+        season: int | None = None,
+        exclude_patterns: list[str] | None = None,
+    ) -> tuple[bool, str, list[str]]:
+        return self._application_service.add_rss_url(
+            url,
+            name=name,
+            anime_name=anime_name,
+            download_directory_name=download_directory_name,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+            season=season,
+            exclude_patterns=exclude_patterns,
+        )
+
+    def list_rss_subscriptions(self) -> list[dict[str, object]]:
+        return self._application_service.list_rss_subscriptions()
+
+    def update_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str | None = None,
+        anime_name: str | None = None,
+        download_directory_name: str | None = None,
+        enabled: bool | None = None,
+        tmdb_id: int | None = None,
+        poster_url: str | None = None,
+        season: int | None = None,
+        exclude_patterns: list[str] | None = None,
+    ) -> tuple[bool, str, list[str]]:
+        return self._application_service.update_rss_subscription(
+            url,
+            name=name,
+            anime_name=anime_name,
+            download_directory_name=download_directory_name,
+            enabled=enabled,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+            season=season,
+            exclude_patterns=exclude_patterns,
+        )
+
+    def correct_rss_subscription(
+        self,
+        original_url: str,
+        *,
+        url: str,
+        name: str = "",
+        anime_name: str = "",
+        download_directory_name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+        season: int | None = None,
+        exclude_patterns: str | list[str] = "",
+    ) -> tuple[bool, str, list[str]]:
+        return self._application_service.correct_rss_subscription(
+            original_url,
+            url=url,
+            name=name,
+            anime_name=anime_name,
+            download_directory_name=download_directory_name,
+            tmdb_id=tmdb_id,
+            poster_url=poster_url,
+            season=season,
+            exclude_patterns=normalize_exclude_patterns(exclude_patterns),
+        )
+
+    async def preview_rss_subscription(
+        self,
+        url: str,
+        *,
+        preferred_name: str = "",
+        preferred_anime_name: str = "",
+        preferred_download_directory_name: str = "",
+        exclude_patterns: str | list[str] = "",
+    ) -> dict[str, object]:
+        return await self._application_service.preview_rss_subscription(
+            url,
+            preferred_name=preferred_name,
+            preferred_anime_name=preferred_anime_name,
+            preferred_download_directory_name=preferred_download_directory_name,
+            exclude_patterns=normalize_exclude_patterns(exclude_patterns),
+        )
+
+    def update_global_exclude_patterns(
+        self, exclude_patterns: str | list[str]
+    ) -> dict[str, object]:
+        success, message = self._application_service.update_global_exclude_patterns(
+            normalize_exclude_patterns(exclude_patterns)
+        )
+        return {
+            "success": success,
+            "message": message,
+            "exclude_patterns": self._application_service.get_global_exclude_patterns(),
+        }
+
+    def global_exclude_patterns(self) -> list[str]:
+        return self._application_service.get_global_exclude_patterns()
+
+    async def validate_download_path(self, path: str) -> tuple[bool, str]:
+        return await self._application_service.validate_download_path(path)
+
+    async def validate_openlist_url(self, url: str) -> tuple[bool, str]:
+        return await self._application_service.validate_openlist_url(url)
+
+    async def validate_download_path_at_url(
+        self, url: str, path: str
+    ) -> tuple[bool, str]:
+        return await self._application_service.validate_download_path_at_url(url, path)
+
+    def validate_rename_format(self, rename_format: str) -> tuple[bool, str]:
+        return self._application_service.validate_rename_format(rename_format)
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        self._application_service.update_runtime_openlist_settings(
+            download_path=download_path,
+            rename_format=rename_format,
+        )
+
+    def update_runtime_openlist_url(self, url: str) -> None:
+        self._application_service.update_runtime_openlist_url(url)
+
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        self._application_service.update_runtime_rss_interval(interval_seconds)
+
+    def update_runtime_max_download_retries(self, max_retries: int) -> None:
+        self._application_service.update_runtime_max_download_retries(max_retries)
+
+    def remove_rss_url(self, url: str) -> tuple[bool, str, list[str]]:
+        return self._application_service.remove_rss_url(url)
+
+    async def scan_rss_now(self) -> dict[str, object]:
+        return await self._application_service.scan_rss_now()
+
+    def schedule_rss_scan_for_url(self, source_url: str) -> bool:
+        """Start a background targeted scan for a newly saved RSS source."""
+        return self._application_service.schedule_rss_scan_for_url(source_url)
+
+    async def search_mikan(
+        self,
+        keyword: str,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        """Search the configured Mikan-compatible site for bangumi."""
+        client = MikanClient(
+            username=config.mikan.username,
+            password=config.mikan.password,
+            base_url=base_url or config.mikan.base_url,
+        )
+        try:
+            results = await client.search_bangumi(keyword.strip())
+            return {
+                "success": True,
+                "results": results,
+                "base_url": base_url or config.mikan.base_url,
+            }
+        except Exception as exc:
+            return {"success": False, "message": f"Mikan 搜索失败：{exc}"}
+        finally:
+            await client.close()
+
+    async def list_mikan_groups(
+        self,
+        bangumi_id: int,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        """List subtitle groups and ready-to-use RSS URLs for a bangumi."""
+        client = MikanClient(
+            username=config.mikan.username,
+            password=config.mikan.password,
+            base_url=base_url or config.mikan.base_url,
+        )
+        try:
+            groups = await client.fetch_bangumi_subgroups(bangumi_id)
+            return {
+                "success": True,
+                "bangumi_id": bangumi_id,
+                "all_rss_url": client.rss_url(bangumi_id),
+                "groups": [
+                    {
+                        "id": group.get("id"),
+                        "name": group.get("name", "未命名字幕组"),
+                        "release_count": len(group.get("releases", [])),
+                        "rss_url": client.rss_url(bangumi_id, group.get("id")),
+                    }
+                    for group in groups
+                ],
+            }
+        except Exception as exc:
+            return {"success": False, "message": f"Mikan 字幕组读取失败：{exc}"}
+        finally:
+            await client.close()
+
+    def mikan_rss_url(
+        self,
+        bangumi_id: int,
+        subgroup_id: int | None = None,
+        *,
+        base_url: str | None = None,
+    ) -> dict[str, object]:
+        """Build the selected Mikan RSS URL using the current site setting."""
+        client = MikanClient(
+            username=config.mikan.username,
+            password=config.mikan.password,
+            base_url=base_url or config.mikan.base_url,
+        )
+        return {
+            "success": True,
+            "rss_url": client.rss_url(bangumi_id, subgroup_id),
+        }
+
+    def rss_status(self) -> dict[str, object]:
+        return self._application_service.rss_status()
 
     async def create_download(
         self,

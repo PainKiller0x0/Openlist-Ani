@@ -1,4 +1,4 @@
-"""Search anime on Mikan by keyword."""
+"""Search anime on the configured Mikan-compatible site by keyword."""
 
 from openlist_ani.assistant.skill_support.mikan_client import MikanClient
 from openlist_ani.adapters.outbound.configuration import config
@@ -8,7 +8,7 @@ async def run(
     keyword: str = "",
     **kwargs,
 ) -> str:
-    """Search for anime on Mikan (mikanani.me).
+    """Search for anime on the configured Mikan-compatible site.
 
     Args:
         keyword: Search keyword (required).
@@ -20,6 +20,7 @@ async def run(
     client = MikanClient(
         username=mikan.username or "",
         password=mikan.password or "",
+        base_url=mikan.base_url,
     )
     try:
         results = await client.search_bangumi(keyword)

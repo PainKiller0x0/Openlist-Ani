@@ -22,7 +22,11 @@ async def run(
     if not mikan.username or not mikan.password:
         return "Error: Mikan credentials not configured. Set [mikan] username and password in config.toml."
 
-    client = MikanClient(username=mikan.username, password=mikan.password)
+    client = MikanClient(
+        username=mikan.username,
+        password=mikan.password,
+        base_url=mikan.base_url,
+    )
     try:
         sg_id = int(subtitle_group_id) if subtitle_group_id else None
         success = await client.unsubscribe_bangumi(

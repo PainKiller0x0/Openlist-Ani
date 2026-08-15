@@ -195,6 +195,38 @@ def configure_logger(
     )
 
 
+def read_recent_logs(limit: int = 300) -> list[str]:
+    """Return a bounded tail of the application log for the built-in UI."""
+    try:
+        requested = int(limit)
+    except (TypeError, ValueError):
+        requested = 300
+    requested = max(1, min(requested, 1000))
+
+    chunks: list[list[str]] = []
+    line_count = 0
+    log_files = sorted(
+        LOG_DIR.glob("openlist_ani_*.log"),
+        key=lambda path: path.name,
+        reverse=True,
+    )
+    for log_file in log_files:
+        try:
+            chunk = log_file.read_text(
+                encoding="utf-8", errors="replace"
+            ).splitlines()
+            chunks.append(chunk)
+            line_count += len(chunk)
+        except OSError:
+            continue
+        if line_count >= requested:
+            break
+    lines: list[str] = []
+    for chunk in reversed(chunks):
+        lines.extend(chunk)
+    return lines[-requested:]
+
+
 # Initialize with default settings
 configure_logger()
 
@@ -205,5 +237,6 @@ __all__ = [
     "configure_logger",
     "file_logging_enabled_from_env",
     "logger",
+    "read_recent_logs",
     "sanitize_for_log",
 ]

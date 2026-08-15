@@ -85,6 +85,7 @@ class AnimeLibraryIngestionPipeline:
             task_store=task_store,
             event_publisher=event_publisher,
             default_base_path=settings.download_path,
+            max_retries=settings.max_download_retries,
         )
         self.download_buffer: PipelineBuffer[PipelineContext[DownloadCandidate]] = (
             PipelineBuffer("download")
@@ -96,10 +97,14 @@ class AnimeLibraryIngestionPipeline:
             PipelineBuffer("notification")
         )
         self._stage_tasks: list[asyncio.Task[None]] = []
+        self._scheduled_scan_tasks: set[asyncio.Task[None]] = set()
         self._stages: list[PipelineStage] = []
 
     async def start(self) -> None:
         loaded_tasks = self.task_coordinator.load_all()
+        # Apply the current config to tasks restored from an older process run.
+        # Otherwise a task keeps the retry limit it had when it was created.
+        self.task_coordinator.update_max_retries(self.settings.max_download_retries)
         restore_stats = await self.restore()
         if loaded_tasks:
             pipeline_logger.info(
@@ -120,6 +125,12 @@ class AnimeLibraryIngestionPipeline:
         pipeline_logger.info("Anime library ingestion pipeline started")
 
     async def stop(self) -> None:
+        scheduled_tasks = list(self._scheduled_scan_tasks)
+        for task in scheduled_tasks:
+            task.cancel()
+        if scheduled_tasks:
+            await asyncio.gather(*scheduled_tasks, return_exceptions=True)
+        self._scheduled_scan_tasks.clear()
         for stage in self._stages:
             await stage.stop()
         for task in self._stage_tasks:
@@ -128,6 +139,88 @@ class AnimeLibraryIngestionPipeline:
             await asyncio.gather(*self._stage_tasks, return_exceptions=True)
         self.task_coordinator.atomic_flush()
         pipeline_logger.info("Anime library ingestion pipeline stopped")
+
+    async def scan_rss_now(self) -> dict[str, object]:
+        """Trigger the RSS stage immediately for the HTTP UI."""
+        stage = self._rss_stage()
+        if stage is None:
+            raise RuntimeError("RSS stage is not enabled")
+        return await stage.scan_now()
+
+    def schedule_rss_scan_for_url(self, source_url: str) -> bool:
+        """Schedule a non-blocking scan for one newly saved RSS source."""
+        stage = self._rss_stage()
+        source_url = source_url.strip()
+        if stage is None or not source_url:
+            return False
+
+        task = asyncio.create_task(self._run_scheduled_rss_scan(stage, source_url))
+        self._scheduled_scan_tasks.add(task)
+        task.add_done_callback(self._scheduled_scan_tasks.discard)
+        return True
+
+    async def _run_scheduled_rss_scan(self, stage: RSSStage, source_url: str) -> None:
+        try:
+            await stage.scan_now(source_url=source_url)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            pipeline_logger.error(
+                f"Immediate RSS scan failed for {source_url}: {error}"
+            )
+
+    def rss_status(self) -> dict[str, object]:
+        """Return RSS stage status for the HTTP UI."""
+        stage = self._rss_stage()
+        return stage.status() if stage is not None else {
+            "enabled": False,
+            "running": False,
+            "status": "disabled",
+            "message": "RSS stage is not enabled",
+        }
+
+    def update_runtime_openlist_settings(
+        self, *, download_path: str, rename_format: str
+    ) -> None:
+        """Apply validated OpenList settings to new runtime work immediately."""
+        object.__setattr__(self.settings, "download_path", download_path)
+        object.__setattr__(self.settings, "rename_format", rename_format)
+        self.task_coordinator.update_default_base_path(download_path)
+        for stage in self._stages:
+            update = getattr(stage, "update_runtime_openlist_settings", None)
+            if update is not None:
+                update(download_path=download_path, rename_format=rename_format)
+
+    def update_runtime_rss_interval(self, interval_seconds: int) -> None:
+        """Apply a validated RSS polling interval without restarting the service."""
+        object.__setattr__(self.settings, "rss_interval_seconds", float(interval_seconds))
+        for stage in self._stages:
+            update = getattr(stage, "update_runtime_rss_interval", None)
+            if update is not None:
+                update(interval_seconds)
+
+    def update_runtime_max_download_retries(self, max_retries: int) -> None:
+        """Apply the retry limit to the live pipeline."""
+        value = max(0, int(max_retries))
+        object.__setattr__(self.settings, "max_download_retries", value)
+        self.task_coordinator.update_max_retries(value)
+
+    def cancel_downloads_for_source(
+        self,
+        source_url: str,
+        *,
+        anime_names: set[str] | None = None,
+        reason: str,
+    ) -> int:
+        return self.task_coordinator.cancel_tasks_for_source(
+            source_url, anime_names=anime_names, reason=reason
+        )
+
+    def _rss_stage(self) -> RSSStage | None:
+        return next(
+            (stage for stage in self._stages if isinstance(stage, RSSStage)),
+            None,
+        )
 
     async def restore(self) -> dict[str, int]:
         stats = {
@@ -142,12 +235,14 @@ class AnimeLibraryIngestionPipeline:
         return stats
 
     async def _restore_task(self, task: TaskMemento) -> str:
-        if task.state in {
-            DownloadState.COMPLETED,
-            DownloadState.FAILED,
-            DownloadState.CANCELLED,
-        }:
+        if task.state in {DownloadState.COMPLETED, DownloadState.CANCELLED}:
             self.task_coordinator.delete(task.task_id)
+            return "skipped"
+
+        # Keep failed RSS tasks in the durable history so a later RSS scan
+        # cannot create the same permanently failing item again. Manual
+        # torrent submissions remain retryable because they have no source URL.
+        if task.state == DownloadState.FAILED:
             return "skipped"
 
         if self._download_retry_limit_reached(task):
@@ -176,6 +271,9 @@ class AnimeLibraryIngestionPipeline:
     def _download_retry_limit_reached(task: TaskMemento) -> bool:
         return (
             task.state in {DownloadState.PENDING, DownloadState.DOWNLOADING}
+            # retry_count is incremented only after a failed attempt, so zero
+            # must still allow the first attempt when max_retries is zero.
+            and task.retry.retry_count > 0
             and task.retry.retry_count >= task.retry.max_retries
         )
 

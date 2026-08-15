@@ -11,10 +11,12 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 from tomlkit import dumps as toml_dumps
 
+from openlist_ani.domain.anime_release import DEFAULT_RENAME_FORMAT
 from openlist_ani.integrations.openlist import normalize_offline_download_tool_name
 from openlist_ani.logger import FATAL_LEVEL, logger
 
 DEFAULT_TMDB_API_KEY = "8ed20a12d9f37dcf9484a505c8be696c"
+PLACEHOLDER_RSS_URL = "http://127.0.0.1:26667/empty.xml"
 
 
 class PriorityConfig(BaseModel):
@@ -59,14 +61,55 @@ class MetadataFilterConfig(BaseModel):
     )  # Regex patterns to exclude RSS entries by title
 
 
+class RSSSubscription(BaseModel):
+    """Persisted metadata for one RSS subscription."""
+
+    url: str
+    name: str = ""
+    anime_name: str = ""
+    download_directory_name: str = ""
+    enabled: bool = True
+    tmdb_id: int | None = None
+    poster_url: str = ""
+    season: int = Field(default=1, ge=0, le=99)
+    exclude_patterns: list[str] = Field(
+        default_factory=list,
+        description="Regex patterns excluded only for this RSS subscription",
+    )
+
+
 class RSSConfig(BaseModel):
     urls: list[str] = Field(default_factory=list)
-    interval_time: int = 300  # RSS fetch interval in seconds (default: 5 minutes)
+    subscriptions: list[RSSSubscription] = Field(default_factory=list)
+    interval_time: int = Field(
+        default=300,
+        ge=60,
+        le=86400,
+        description="RSS fetch interval in seconds (default: 5 minutes)",
+    )
+    max_download_retries: int = Field(
+        default=3,
+        ge=0,
+        le=100,
+        description="Maximum download retries after the first attempt",
+    )
     strict: bool = (
         False  # Strict mode: filter entries whose rename stem matches existing downloads
     )
     filter: MetadataFilterConfig = MetadataFilterConfig()
     priority: PriorityConfig = PriorityConfig()
+
+    @model_validator(mode="after")
+    def _synchronise_urls_and_subscriptions(self) -> "RSSConfig":
+        """Migrate legacy ``urls`` and keep active URLs runtime-compatible."""
+        by_url = {item.url: item for item in self.subscriptions if item.url.strip()}
+        for url in self.urls:
+            if url.strip() and url not in by_url:
+                by_url[url] = RSSSubscription(url=url)
+
+        self.subscriptions = list(by_url.values())
+        self.urls = [item.url for item in self.subscriptions if item.enabled]
+        return self
 
 
 class OpenListConfig(BaseModel):
@@ -74,9 +117,7 @@ class OpenListConfig(BaseModel):
     token: str = ""
     download_path: str = "/"
     offline_download_tool: str = "qBittorrent"
-    rename_format: str = (
-        "{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}"
-    )
+    rename_format: str = DEFAULT_RENAME_FORMAT
 
     @field_validator("offline_download_tool", mode="before")
     @classmethod
@@ -217,8 +258,9 @@ class BangumiConfig(BaseModel):
 
 
 class MikanConfig(BaseModel):
-    """Configuration for Mikan (mikanani.me) integration."""
+    """Configuration for the Mikan-compatible anime site integration."""
 
+    base_url: str = "https://mikanani.kas.pub/"  # Mikan-compatible site base URL
     username: str = ""  # Mikan account username
     password: str = ""  # Mikan account password
 
@@ -320,6 +362,8 @@ class ConfigManager:
             content = self.config_path.read_bytes()
             raw = tomllib.loads(content.decode("utf-8"))
             self._config = UserConfig.model_validate(raw)
+            if self._remove_placeholder_rss(save=False):
+                self.save()
             self._load_failed = False
             self._set_proxy_env()
         except Exception as e:
@@ -338,7 +382,9 @@ class ConfigManager:
     def save(self) -> None:
         """Save current configuration to file."""
         try:
-            payload = self._config.model_dump()
+            # TOML has no null literal.  Optional subscription metadata such as
+            # an unresolved TMDB id must be omitted until it is available.
+            payload = self._config.model_dump(exclude_none=True)
             self.config_path.write_text(toml_dumps(payload), encoding="utf-8")
         except Exception as e:
             logger.error(
@@ -346,11 +392,196 @@ class ConfigManager:
                 "Runtime changes may not persist after restart."
             )
 
-    def add_rss_url(self, url: str) -> None:
-        """Add a new RSS URL to configuration."""
-        if url not in self._config.rss.urls:
-            self._config.rss.urls.append(url)
+    def add_rss_url(
+        self,
+        url: str,
+        *,
+        name: str = "",
+        anime_name: str = "",
+        download_directory_name: str = "",
+        tmdb_id: int | None = None,
+        poster_url: str = "",
+        season: int | None = None,
+        exclude_patterns: list[str] | None = None,
+    ) -> None:
+        """Add or reactivate an RSS subscription."""
+        self._remove_placeholder_rss(save=False)
+        existing = next(
+            (item for item in self._config.rss.subscriptions if item.url == url), None
+        )
+        if existing is None:
+            self._config.rss.subscriptions.append(
+                RSSSubscription(
+                    url=url,
+                    name=name.strip(),
+                    anime_name=anime_name.strip(),
+                    download_directory_name=download_directory_name.strip(),
+                    tmdb_id=tmdb_id,
+                    poster_url=poster_url.strip(),
+                    season=season or 1,
+                    exclude_patterns=list(exclude_patterns or []),
+                )
+            )
+        else:
+            existing.enabled = True
+            if name.strip():
+                existing.name = name.strip()
+            if anime_name.strip():
+                existing.anime_name = anime_name.strip()
+            if download_directory_name.strip():
+                existing.download_directory_name = download_directory_name.strip()
+            if tmdb_id is not None:
+                existing.tmdb_id = tmdb_id
+            if poster_url.strip():
+                existing.poster_url = poster_url.strip()
+            if season is not None:
+                existing.season = season
+            if exclude_patterns is not None:
+                existing.exclude_patterns = list(exclude_patterns)
+        self._sync_active_rss_urls()
+        self.save()
+
+    def update_rss_subscription(
+        self,
+        url: str,
+        *,
+        name: str | None = None,
+        anime_name: str | None = None,
+        download_directory_name: str | None = None,
+        enabled: bool | None = None,
+        tmdb_id: int | None = None,
+        poster_url: str | None = None,
+        season: int | None = None,
+        exclude_patterns: list[str] | None = None,
+    ) -> bool:
+        """Update display metadata or pause/resume a subscription."""
+        item = next(
+            (item for item in self._config.rss.subscriptions if item.url == url), None
+        )
+        if item is None:
+            return False
+        if name is not None and name.strip():
+            item.name = name.strip()
+        if anime_name is not None:
+            item.anime_name = anime_name.strip()
+        if download_directory_name is not None:
+            item.download_directory_name = download_directory_name.strip()
+        if enabled is not None:
+            item.enabled = enabled
+        if tmdb_id is not None:
+            item.tmdb_id = tmdb_id
+        if poster_url is not None:
+            item.poster_url = poster_url.strip()
+        if season is not None:
+            item.season = season
+        if exclude_patterns is not None:
+            item.exclude_patterns = list(exclude_patterns)
+        self._sync_active_rss_urls()
+        self.save()
+        return True
+
+    def update_rss_filter(self, *, exclude_patterns: list[str]) -> None:
+        """Update the global RSS title exclusion list and persist it."""
+        self._config.rss.filter.exclude_patterns = list(exclude_patterns)
+        self.save()
+
+    def update_llm_settings(
+        self,
+        *,
+        provider_type: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        tmdb_language: str | None = None,
+        metadata_parser_provider: str | None = None,
+    ) -> None:
+        """Persist the LLM/metadata settings edited by the built-in UI.
+
+        An omitted API key keeps the existing secret, so opening the settings
+        page never requires returning the key to the browser.
+        """
+        if provider_type is not None and provider_type.strip():
+            self._config.llm.provider_type = provider_type.strip()
+        if api_key is not None and api_key.strip():
+            self._config.llm.openai_api_key = api_key.strip()
+        if base_url is not None and base_url.strip():
+            self._config.llm.openai_base_url = base_url.strip().rstrip("/")
+        if model is not None and model.strip():
+            self._config.llm.openai_model = model.strip()
+        if tmdb_language is not None and tmdb_language.strip():
+            self._config.llm.tmdb_language = tmdb_language.strip()
+        if metadata_parser_provider is not None and metadata_parser_provider.strip():
+            self._config.metadata_parser.provider = metadata_parser_provider.strip()
+        self.save()
+
+    def update_mikan_settings(self, *, base_url: str | None = None) -> None:
+        """Persist the Mikan-compatible site URL used by the web helper."""
+        if base_url is not None and base_url.strip():
+            self._config.mikan.base_url = base_url.strip().rstrip("/") + "/"
+        self.save()
+
+    def update_openlist_settings(
+        self,
+        *,
+        openlist_url: str | None = None,
+        download_path: str | None = None,
+        rename_format: str | None = None,
+    ) -> None:
+        """Persist the validated OpenList endpoint, destination and rename format."""
+        if openlist_url is not None:
+            self._config.openlist.url = openlist_url.strip().rstrip("/")
+        if download_path is not None:
+            self._config.openlist.download_path = download_path.strip()
+        if rename_format is not None:
+            self._config.openlist.rename_format = rename_format.strip()
+        self.save()
+
+    def update_rss_settings(
+        self,
+        *,
+        interval_time: int | None = None,
+        max_download_retries: int | None = None,
+    ) -> None:
+        """Persist RSS polling settings edited by the built-in UI."""
+        if interval_time is not None:
+            self._config.rss.interval_time = interval_time
+        if max_download_retries is not None:
+            self._config.rss.max_download_retries = max_download_retries
+        self.save()
+
+    def remove_rss_url(self, url: str) -> bool:
+        """Remove an RSS URL from configuration."""
+        before = len(self._config.rss.subscriptions)
+        self._config.rss.subscriptions = [
+            item for item in self._config.rss.subscriptions if item.url != url
+        ]
+        if len(self._config.rss.subscriptions) == before:
+            return False
+        self._sync_active_rss_urls()
+        self.save()
+        return True
+
+    def _sync_active_rss_urls(self) -> None:
+        self._config.rss.urls = [
+            item.url for item in self._config.rss.subscriptions if item.enabled
+        ]
+
+    def _remove_placeholder_rss(self, *, save: bool) -> bool:
+        before = len(self._config.rss.subscriptions)
+        self._config.rss.subscriptions = [
+            item
+            for item in self._config.rss.subscriptions
+            if item.url != PLACEHOLDER_RSS_URL
+        ]
+        self._config.rss.urls = [
+            item.url
+            for item in self._config.rss.subscriptions
+            if item.enabled
+        ]
+        changed = len(self._config.rss.subscriptions) != before
+        if changed and save:
             self.save()
+        return changed
 
     @property
     def rss(self) -> RSSConfig:

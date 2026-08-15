@@ -23,6 +23,7 @@ from openlist_ani.adapters.outbound.configuration import (
     OpenListConfig,
     ProxyConfig,
     RSSConfig,
+    RSSSubscription,
     FeishuAssistantConfig,
     WechatAssistantConfig,
     UserConfig,
@@ -46,6 +47,39 @@ class TestRSSConfig:
         )
         assert len(cfg.urls) == 2
         assert cfg.interval_time == 60
+
+    def test_subscription_defaults_to_first_season(self):
+        cfg = RSSConfig(subscriptions=[RSSSubscription(url="https://feed.example/rss")])
+        assert cfg.interval_time == 300
+        assert cfg.subscriptions[0].season == 1
+        assert cfg.subscriptions[0].download_directory_name == ""
+
+    def test_subscription_supports_an_independent_directory_name(self):
+        cfg = RSSConfig(
+            subscriptions=[
+                RSSSubscription(
+                    url="https://feed.example/rss",
+                    anime_name="文件名番剧",
+                    download_directory_name="网盘目录番剧",
+                )
+            ]
+        )
+        assert cfg.subscriptions[0].anime_name == "文件名番剧"
+        assert cfg.subscriptions[0].download_directory_name == "网盘目录番剧"
+
+    def test_legacy_urls_create_named_subscription_records(self):
+        cfg = RSSConfig(urls=["https://feed.example/rss"])
+        assert cfg.subscriptions[0].url == "https://feed.example/rss"
+        assert cfg.subscriptions[0].enabled is True
+
+    def test_paused_subscription_is_kept_but_not_polled(self):
+        cfg = RSSConfig(
+            subscriptions=[
+                RSSSubscription(url="https://feed.example/rss", enabled=False)
+            ]
+        )
+        assert cfg.urls == []
+        assert cfg.subscriptions[0].enabled is False
 
 
 class TestOpenListConfig:
@@ -202,6 +236,29 @@ class TestUserConfig:
 
 
 class TestConfigManager:
+    def test_placeholder_rss_is_removed_when_real_feed_is_added(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[rss]\nurls = ["http://127.0.0.1:26667/empty.xml"]\n',
+            encoding="utf-8",
+        )
+
+        mgr = ConfigManager(str(config_path))
+        mgr.add_rss_url("https://example.com/anime.xml")
+
+        assert mgr.rss.urls == ["https://example.com/anime.xml"]
+
+    def test_remove_rss_url_persists_change(self, tmp_path):
+        config_path = tmp_path / "config.toml"
+        config_path.write_text(
+            '[rss]\nurls = ["https://example.com/anime.xml"]\n',
+            encoding="utf-8",
+        )
+
+        mgr = ConfigManager(str(config_path))
+        assert mgr.remove_rss_url("https://example.com/anime.xml") is True
+        assert ConfigManager(str(config_path)).rss.urls == []
+
     def test_package_import_has_no_file_side_effect(self, tmp_path):
         """Importing configuration symbols should not create config.toml."""
         script = "\n".join(
@@ -287,6 +344,42 @@ class TestConfigManager:
         # Adding duplicate should not add twice
         mgr.add_rss_url("http://new.rss")
         assert mgr.rss.urls.count("http://new.rss") == 1
+
+    def test_pause_and_resume_rss_subscription(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mgr = ConfigManager("config.toml")
+        mgr.add_rss_url("http://new.rss", name="测试番剧", tmdb_id=123)
+
+        assert mgr.update_rss_subscription("http://new.rss", enabled=False) is True
+        assert mgr.rss.urls == []
+        assert mgr.rss.subscriptions[0].name == "测试番剧"
+
+        assert mgr.update_rss_subscription("http://new.rss", enabled=True) is True
+        assert mgr.rss.urls == ["http://new.rss"]
+
+    def test_rss_exclusion_patterns_persist(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mgr = ConfigManager("config.toml")
+        mgr.add_rss_url(
+            "http://new.rss",
+            exclude_patterns=["ABEMA", "CR"],
+        )
+        mgr.update_rss_filter(exclude_patterns=["Baha"])
+
+        mgr2 = ConfigManager("config.toml")
+        assert mgr2.rss.subscriptions[0].exclude_patterns == ["ABEMA", "CR"]
+        assert mgr2.rss.filter.exclude_patterns == ["Baha"]
+
+    def test_pipe_separated_ui_patterns_keep_regex_alternation(self):
+        from openlist_ani.application.anime_library_ingestion.exclusions import (
+            normalize_exclude_patterns,
+        )
+
+        assert normalize_exclude_patterns("ABEMA|CR") == ["ABEMA", "CR"]
+        assert normalize_exclude_patterns(r"(?i)\b(SP|OVA)\b|Baha") == [
+            r"(?i)\b(SP|OVA)\b",
+            "Baha",
+        ]
 
     def test_properties(self, tmp_path, monkeypatch):
         """All config properties should be accessible without error."""

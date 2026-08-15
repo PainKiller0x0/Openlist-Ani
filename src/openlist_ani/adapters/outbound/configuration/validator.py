@@ -10,7 +10,7 @@ from openlist_ani.logger import FATAL_LEVEL, logger
 from .settings import BotConfig, UserConfig
 
 _SUPPORTED_RENAME_FIELDS: frozenset[str] = frozenset(
-    {"anime_name", "season", "episode", "fansub", "quality", "languages"}
+    {"anime_name", "season", "episode", "fansub", "quality", "languages", "version"}
 )
 _SUPPORTED_METADATA_PARSER_PROVIDERS: frozenset[str] = frozenset({"llm", "regex"})
 _SUPPORTED_METADATA_VALIDATOR_PROVIDERS: frozenset[str] = frozenset({"tmdb", "none"})
@@ -42,8 +42,10 @@ class ConfigValidator:
         return not errors
 
     def _validate_core_config(self, errors: list[str]) -> None:
-        if not self._data.rss.urls:
-            errors.append("No RSS URLs configured. Please add RSS URLs in [rss] urls.")
+        if not self._data.rss.urls and not self._data.rss.subscriptions:
+            errors.append(
+                "No RSS URLs configured. Please add RSS URLs in [rss] urls."
+            )
 
         if not self._data.openlist.url:
             errors.append("OpenList URL is not configured in [openlist] url.")
