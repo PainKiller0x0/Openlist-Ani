@@ -7,8 +7,9 @@ import uuid
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 
 from openlist_ani.adapters.outbound.configuration import config
 from openlist_ani.logger import logger, read_recent_logs
@@ -36,6 +37,15 @@ from .schema import (
     MikanSearchRequest,
 )
 from .service import BackendApiService
+from .auth import (
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
+    configured,
+    configured_username,
+    issue_session,
+    session_username,
+    verify_password,
+)
 from openlist_ani.application.anime_library_ingestion.exclusions import (
     normalize_exclude_patterns,
 )
@@ -44,6 +54,41 @@ router = APIRouter(prefix="/api")
 UPLOAD_DIR = Path("data/uploads")
 TORRENT_NAME = re.compile(r"^[0-9a-f]{32}\.torrent$")
 MAX_TORRENT_BYTES = 50 * 1024 * 1024
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=500)
+
+
+@router.get("/auth/session")
+async def auth_session(request: Request) -> dict[str, object]:
+    username = session_username(request.cookies.get(SESSION_COOKIE))
+    return {"authenticated": bool(username), "username": username}
+
+
+@router.post("/auth/login")
+async def auth_login(payload: LoginRequest, response: Response) -> dict[str, object]:
+    if not configured():
+        return {"success": True, "authenticated": True, "username": payload.username}
+    if payload.username.strip() != configured_username() or not verify_password(payload.password):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    response.set_cookie(
+        SESSION_COOKIE,
+        issue_session(configured_username()),
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+    )
+    return {"success": True, "authenticated": True, "username": configured_username()}
+
+
+@router.post("/auth/logout")
+async def auth_logout(response: Response) -> dict[str, object]:
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"success": True}
 
 
 def _internal_backend_host() -> str:
@@ -534,6 +579,21 @@ async def get_download(task_id: str) -> DownloadTaskResponse:
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
     return task
+
+
+@router.post("/ui/downloads/{task_id}/retry")
+async def ui_retry_download(task_id: str) -> dict[str, object]:
+    """Manually retry a failed download using a fresh OpenList task."""
+    svc = BackendApiService.get()
+    success, message, task = await svc.retry_download(task_id)
+    if not success:
+        status_code = 404 if message == "Task not found" else 409
+        raise HTTPException(status_code=status_code, detail=message)
+    return {
+        "success": True,
+        "message": message,
+        "task": task.model_dump(mode="json") if task else None,
+    }
 
 
 @router.post("/parse_rss")
