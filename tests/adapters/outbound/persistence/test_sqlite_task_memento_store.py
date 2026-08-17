@@ -63,6 +63,20 @@ def test_sqlite_memento_store_deletes_terminal_task_without_dropping_others(tmp_
     assert [task.task_id for task in loaded] == ["active"]
 
 
+def test_sqlite_memento_store_keeps_failed_task_for_manual_retry(tmp_path):
+    db_path = tmp_path / "task_mementos.db"
+    store = SqliteTaskMementoStore(db_path)
+    failed = _task("failed", state=DownloadState.FAILED)
+    failed.retry.last_error = "remote task deleted"
+
+    store.save(failed)
+
+    loaded = store.load_all()
+    assert [task.task_id for task in loaded] == ["failed"]
+    assert loaded[0].state == DownloadState.FAILED
+    assert loaded[0].retry.last_error == "remote task deleted"
+
+
 def test_sqlite_memento_store_imports_legacy_json_when_empty(tmp_path):
     legacy_path = tmp_path / "task_mementos.json"
     db_path = tmp_path / "task_mementos.db"

@@ -543,6 +543,14 @@ class AnimeLibraryApplicationService:
     def get_download(self, task_id: str) -> TaskMemento | None:
         return self._pipeline.task_coordinator.get_task(task_id)
 
+    async def retry_download(
+        self, task_id: str
+    ) -> tuple[bool, str, TaskMemento | None]:
+        task, error = await self._pipeline.retry_download(task_id)
+        if task is None:
+            return False, error or "Unable to retry task", None
+        return True, f"已重新加入下载队列：{task.release.title}", task
+
     async def scan_rss_now(self) -> dict[str, object]:
         return await self._pipeline.scan_rss_now()
 

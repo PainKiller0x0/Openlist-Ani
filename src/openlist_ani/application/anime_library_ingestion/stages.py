@@ -467,7 +467,12 @@ class DownloadStage(PipelineStage[PipelineContext[DownloadCandidate]]):
             download_logger.info(f"Download completed: {label}")
             await self.event_publisher.publish(
                 OAniEvent(
-                    OAniEventType.DOWNLOAD_COMPLETED, {"task_id": memento.task_id}
+                    OAniEventType.DOWNLOAD_COMPLETED,
+                    {
+                        "task_id": memento.task_id,
+                        "path": downloaded.path,
+                        "base_path": memento.base_path,
+                    },
                 )
             )
             await self._output.put(

@@ -373,6 +373,12 @@ class BackendApiService:
         task = self._application_service.get_download(task_id)
         return _build_task_response(task) if task else None
 
+    async def retry_download(
+        self, task_id: str
+    ) -> tuple[bool, str, DownloadTaskResponse | None]:
+        success, message, task = await self._application_service.retry_download(task_id)
+        return success, message, _build_task_response(task) if task else None
+
     async def parse_rss(
         self,
         url: str,

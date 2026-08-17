@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from openlist_ani.domain.download_task.memento import TaskMemento
-from openlist_ani.domain.download_task.task import TERMINAL_STATES
+from openlist_ani.domain.download_task.task import DownloadState
 from openlist_ani.logger import logger
 
 
@@ -42,7 +42,11 @@ class JsonTaskMementoStore:
 
     def save(self, task_memento: TaskMemento) -> None:
         self._ensure_loaded()
-        if task_memento.state in TERMINAL_STATES:
+        # Failed tasks remain durable and can be retried from the web UI.
+        if task_memento.state in {
+            DownloadState.COMPLETED,
+            DownloadState.CANCELLED,
+        }:
             self._items.pop(task_memento.task_id, None)
             self.atomic_flush()
             return

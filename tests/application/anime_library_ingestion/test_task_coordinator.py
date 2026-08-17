@@ -6,6 +6,7 @@ from openlist_ani.application.anime_library_ingestion.task_coordinator import (
 )
 from openlist_ani.domain.anime_release import AnimeRelease
 from openlist_ani.domain.download_task.memento import TaskMemento
+from openlist_ani.domain.download_task.downloader import DownloaderMemento
 from openlist_ani.domain.download_task.task import DownloadState
 
 
@@ -157,3 +158,38 @@ def test_task_coordinator_keeps_bounded_terminal_history_on_save():
     assert coordinator.list_active_tasks() == []
     assert coordinator.list_tasks() == [second]
     assert store.saved == [first, second]
+
+
+async def test_task_coordinator_manual_retry_resets_failed_task_for_fresh_provider_task():
+    failed = TaskMemento(
+        task_id="failed-retry",
+        state=DownloadState.FAILED,
+        release=_release("magnet:?xt=urn:btih:failed-retry"),
+        base_path="/anime",
+    )
+    failed.retry.retry_count = 3
+    failed.retry.max_retries = 3
+    failed.retry.last_error = "remote task deleted"
+    failed.downloader = DownloaderMemento(
+        "openlist",
+        {"task_id": "old-openlist-task", "temp_path": "/tmp/old"},
+    )
+    store = FakeTaskStore()
+    coordinator = TaskCoordinator(
+        task_store=store,
+        event_publisher=FakeEventPublisher(),
+        default_base_path="/anime",
+    )
+    coordinator.register_task(failed)
+
+    retried, error = await coordinator.prepare_manual_retry(failed.task_id)
+
+    assert error is None
+    assert retried is failed
+    assert retried.state == DownloadState.PENDING
+    assert retried.retry.retry_count == 0
+    assert retried.retry.last_error is None
+    assert retried.downloader is None
+    assert retried.started_at is None
+    assert coordinator.list_active_tasks() == [failed]
+    assert store.saved[-1] is failed

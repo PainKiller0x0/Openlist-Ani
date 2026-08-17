@@ -21,6 +21,7 @@ from openlist_ani.adapters.outbound.downloaders import (
     OpenListDownloader,
 )
 from openlist_ani.adapters.outbound.events import OAniEventManager
+from openlist_ani.application.common import OAniEventType
 from openlist_ani.adapters.outbound.feed_sources import (
     FeedSourceFactory,
     ReleaseFeedReader,
@@ -71,6 +72,10 @@ from openlist_ani.application.anime_library_ingestion.application_service import
 from openlist_ani.domain.anime_release import format_series_name
 from openlist_ani.integrations.openlist import OpenListClient, OpenListHealthCheck
 from openlist_ani.integrations.llm import LLMClientSettings, create_llm_client
+from openlist_ani.integrations.smartstrm import (
+    SmartStrmTrigger,
+    SmartStrmTriggerSettings,
+)
 from openlist_ani.logger import FATAL_LEVEL, configure_logger, logger
 
 startup_logger = logger
@@ -103,6 +108,16 @@ async def run() -> None:
 
     event_manager = OAniEventManager()
     await event_manager.start()
+    smartstrm_trigger = SmartStrmTrigger(
+        SmartStrmTriggerSettings(
+            enabled=config.smartstrm.enabled,
+            trigger_url=config.smartstrm.trigger_url,
+            timeout_seconds=config.smartstrm.timeout_seconds,
+        )
+    )
+    await event_manager.subscribe(
+        OAniEventType.DOWNLOAD_COMPLETED, smartstrm_trigger.handle
+    )
 
     notification_manager = await _setup_notifications()
     task_memento_store = SqliteTaskMementoStore(

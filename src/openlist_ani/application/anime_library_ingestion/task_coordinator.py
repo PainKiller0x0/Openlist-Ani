@@ -126,6 +126,51 @@ class TaskCoordinator:
             )
             return task
 
+    async def prepare_manual_retry(
+        self, task_id: str
+    ) -> tuple[TaskMemento | None, str | None]:
+        """Reset one failed task for a fresh download attempt."""
+        async with self._reservation_lock:
+            task = self.get_task(task_id)
+            if task is None:
+                return None, "Task not found"
+            if task.state != DownloadState.FAILED:
+                return (
+                    None,
+                    f"Task is {task.state.value}; only failed tasks can be retried",
+                )
+
+            duplicate = any(
+                other.task_id != task.task_id
+                and other.release.download_url == task.release.download_url
+                and other.state
+                not in {
+                    DownloadState.COMPLETED,
+                    DownloadState.FAILED,
+                    DownloadState.CANCELLED,
+                }
+                for other in self.list_tasks()
+            )
+            if duplicate:
+                return None, "The same release is already queued or downloading"
+
+            # The old OpenList task may have been deleted. Clear every
+            # provider checkpoint so the downloader submits a fresh task.
+            task.state = DownloadState.PENDING
+            task.downloader = None
+            task.pipeline.next_buffer = "download"
+            task.pipeline.downloaded_directory_path = None
+            task.pipeline.downloaded_filename = None
+            task.pipeline.renamed_path = None
+            task.output_path = None
+            task.retry.retry_count = 0
+            task.retry.last_error = None
+            task.started_at = None
+            task.completed_at = None
+            task.touch()
+            self.save(task)
+            return task, None
+
     def register_task(self, task_memento: TaskMemento) -> None:
         if task_memento.state in self._TERMINAL_STATES:
             self._remember_terminal(task_memento)

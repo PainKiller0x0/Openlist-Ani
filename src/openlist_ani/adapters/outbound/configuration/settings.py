@@ -279,6 +279,14 @@ class BackendConfig(BaseModel):
     port: int = 26666  # Listening port
 
 
+class SmartStrmConfig(BaseModel):
+    """Optional local relay used to trigger SmartStrm after a download."""
+
+    enabled: bool = False
+    trigger_url: str = ""
+    timeout_seconds: float = Field(default=2.0, ge=0.2, le=10.0)
+
+
 class UserConfig(BaseModel):
     downloader: DownloaderConfig = DownloaderConfig()
     file_renamer: FileRenamerConfig = FileRenamerConfig()
@@ -294,6 +302,7 @@ class UserConfig(BaseModel):
     bangumi: BangumiConfig = BangumiConfig()
     mikan: MikanConfig = MikanConfig()
     backend: BackendConfig = BackendConfig()
+    smartstrm: SmartStrmConfig = SmartStrmConfig()
 
     @model_validator(mode="before")
     @classmethod
@@ -643,6 +652,10 @@ class ConfigManager:
     @property
     def backend(self) -> BackendConfig:
         return self.data.backend
+
+    @property
+    def smartstrm(self) -> SmartStrmConfig:
+        return self.data.smartstrm
 
     @property
     def backend_url(self) -> str:

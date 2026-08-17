@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 
 from openlist_ani.domain.download_task.memento import TaskMemento
-from openlist_ani.domain.download_task.task import TERMINAL_STATES
+from openlist_ani.domain.download_task.task import DownloadState
 from openlist_ani.logger import logger
 
 DEFAULT_TASK_MEMENTO_DB_PATH = Path.cwd() / "data/task_mementos.db"
@@ -44,7 +44,13 @@ class SqliteTaskMementoStore:
 
     def save(self, task_memento: TaskMemento) -> None:
         self._ensure_initialized()
-        if task_memento.state in TERMINAL_STATES:
+        # Keep failed tasks durable so the UI can offer a manual retry after a
+        # process restart. Completed and cancelled tasks no longer need
+        # pipeline recovery and can still be removed.
+        if task_memento.state in {
+            DownloadState.COMPLETED,
+            DownloadState.CANCELLED,
+        }:
             self.delete(task_memento.task_id)
             return
 
@@ -123,7 +129,7 @@ class SqliteTaskMementoStore:
             return
 
         for task in legacy_tasks:
-            if task.state in TERMINAL_STATES:
+            if task.state in {DownloadState.COMPLETED, DownloadState.CANCELLED}:
                 continue
             db.execute(
                 """

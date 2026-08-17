@@ -2,6 +2,11 @@
 host = "127.0.0.1"  # Backend API bind address (127.0.0.1 = localhost only)
 port = 26666  # Backend API listening port
 
+[smartstrm]
+enabled = false  # Trigger the local op-ops relay after a successful OpenList move
+trigger_url = "http://127.0.0.1:18098/trigger"
+timeout_seconds = 2.0
+
 [rss]
 urls = []
 interval_time = 300 # RSS fetch interval in seconds (default: 5 minutes)

@@ -288,6 +288,19 @@ class AnimeLibraryIngestionPipeline:
         await self._enqueue_download(task)
         return task
 
+    async def retry_download(
+        self, task_id: str
+    ) -> tuple[TaskMemento | None, str | None]:
+        """Queue a failed task again using a fresh OpenList remote task."""
+        task, error = await self.task_coordinator.prepare_manual_retry(task_id)
+        if task is None:
+            return None, error
+        await self._enqueue_download(task)
+        pipeline_logger.info(
+            f"Manual retry queued: {task.release.title} (task={task.task_id})"
+        )
+        return task, None
+
     def _build_stages(self) -> list[PipelineStage]:
         stages = [
             DownloadStage(

@@ -70,6 +70,7 @@ SmartStrm、Jellyfin 和播放器都不是 op-ani 的硬依赖。只使用 OpenL
 - Telegram、微信 iLink、飞书/Lark、PushPlus 通知。
 - Telegram、微信 iLink、飞书/Lark 智能助理。
 - Mikan 站点地址可在设置中修改，默认使用 `https://mikanani.kas.pub/`。
+- 可选通知本机 `op-ops` relay，在 OpenList 下载完成后立即触发 SmartStrm 扫描。
 - `deploy/xunlei-token-bridge/` 提供 OpenList 与 SmartStrm 迅雷令牌同步桥，适用于两者共用轮换令牌的部署。
 
 ## 最快上手
@@ -133,6 +134,11 @@ tmdb_language = "zh-CN"
 
 [mikan]
 base_url = "https://mikanani.kas.pub/"
+
+[smartstrm]
+enabled = false
+trigger_url = "http://127.0.0.1:18098/trigger"
+timeout_seconds = 2.0
 ```
 
 完整配置请参考 [`config.toml.example`](config.toml.example) 和 [`docs/配置说明.md`](docs/配置说明.md)。不要把真实 API Key、OpenList 令牌或机器人令牌提交到 Git 仓库。
@@ -207,6 +213,13 @@ deploy/xunlei-token-bridge/
 ```
 
 它只负责令牌轮换后的同步，不负责转存、刮削或播放。迅雷主动撤销授权或要求验证码时，仍需人工重新授权一次。
+
+如果同时部署了 `op-ops` 的 `smartstrm-trigger`，将配置中的 `[smartstrm].enabled`
+设为 `true`，并填写本机 relay 地址。下载完成后会即时通知 SmartStrm，定时扫描仍然保留作为兜底。
+
+对外提供网页时，应用支持站内登录。通过服务的环境文件配置
+`OP_ANI_AUTH_USER`、`OP_ANI_AUTH_PASSWORD_HASH` 和 `OP_ANI_AUTH_SECRET`；不要把真实密码、
+哈希或签名密钥提交到 Git。
 
 ## 部署方式
 
