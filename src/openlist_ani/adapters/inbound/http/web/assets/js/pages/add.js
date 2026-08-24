@@ -7,7 +7,7 @@ function stepper(active) {
 
 function renderSearchResults(results) {
   if (!results.length) return '<div class="empty">没有找到匹配的番剧。</div>';
-  return `<div class="result-list">${results.map((item, index) => `<button class="result-item" data-result-index="${index}"><span><span class="result-title">${escapeHtml(item.name || '未命名')}</span><br><span class="result-meta">Mikan Bangumi #${escapeHtml(item.bangumi_id)}</span></span><span>选择 →</span></button>`).join('')}</div>`;
+  return `<div class="result-list">${results.map((item, index) => `<div class="result-item"><div class="result-copy"><div class="result-title">${escapeHtml(item.name || '未命名')}</div><a class="mikan-bangumi-link" href="${escapeHtml(item.url || '#')}" target="_blank" rel="noopener noreferrer">Mikan Bangumi #${escapeHtml(item.bangumi_id)}</a></div><button class="result-select" data-result-index="${index}">选择 →</button></div>`).join('')}</div>`;
 }
 
 export async function renderAdd(ctx) {

@@ -88,9 +88,14 @@ button, input, select, textarea { font-family: inherit; }
 .step.done { color: var(--good); }
 .step.done .step-number { color: #061b14; border-color: var(--good); background: var(--good); }
 .result-list, .group-list { display: grid; gap: 0; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); }
-.result-item, .group-item { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px 22px; border: 0; border-bottom: 1px solid var(--line); color: var(--text); background: var(--panel); text-align: left; font: inherit; cursor: pointer; }
+.result-item, .group-item { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 20px 22px; border: 0; border-bottom: 1px solid var(--line); color: var(--text); background: var(--panel); text-align: left; font: inherit; }
 .result-item:last-child, .group-item:last-child { border-bottom: 0; }
 .result-item:hover, .group-item:hover { background: var(--panel-2); }
+.result-copy { min-width: 0; }
+.result-select { flex: 0 0 auto; padding: 0; border: 0; color: var(--text); background: transparent; font: inherit; cursor: pointer; }
+.result-select:hover { color: var(--blue); }
+.mikan-bangumi-link { display: inline-block; margin-top: 5px; color: var(--blue); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.mikan-bangumi-link:hover { color: var(--text); }
 .result-title { font-size: 16px; font-weight: 700; }
 .result-meta { color: var(--muted); font-size: 12px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 20px; }
