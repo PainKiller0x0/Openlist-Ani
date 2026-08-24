@@ -1,6 +1,22 @@
 import { api } from '../api.js';
 import { confirmDialog, emptyState, escapeHtml, formatDate, pageHeader, poster, renderShell, setLoading, statusBadge, toast } from '../components.js';
 
+const CARD_SIZE_KEY = 'op-ani.subscription-card-size';
+const CARD_SIZES = ['large', 'medium', 'small'];
+
+function readCardSize() {
+  try {
+    const saved = localStorage.getItem(CARD_SIZE_KEY);
+    return CARD_SIZES.includes(saved) ? saved : 'large';
+  } catch {
+    return 'large';
+  }
+}
+
+function saveCardSize(size) {
+  try { localStorage.setItem(CARD_SIZE_KEY, size); } catch { /* private browsing may block storage */ }
+}
+
 function subscriptionCard(item, state) {
   const enabled = item.enabled !== false;
   const latest = item.latest_episode ?? item.last_episode ?? null;
@@ -23,6 +39,7 @@ function taskActivity(tasks) {
 export async function renderTracking(ctx) {
   const state = await api.get('/api/ui/state');
   const status = state.rss_status || {};
+  const cardSize = readCardSize();
   const subscriptions = (state.rss_subscriptions || []).filter((item) => item.url);
   const failed = (state.tasks || []).filter((task) => task.state === 'failed').length;
   const running = status.running === true || status.status === 'running';
@@ -36,10 +53,18 @@ export async function renderTracking(ctx) {
       <div class="card stat-card"><div class="stat-label">下载错误</div><div class="stat-value">${failed} 个待处理</div><span class="stat-icon danger">△</span></div>
     </section>
     <div class="home-toolbar"><div class="toolbar-search"><span>⌕</span><input class="search-input" id="subscriptionSearch" placeholder="搜索番剧…"></div><select class="status-filter" id="subscriptionFilter"><option value="all">全部状态</option><option value="running">追踪中</option><option value="paused">已暂停</option></select><span class="total-count">▥ 共 ${subscriptions.length} 部追番</span></div>
-    <div class="grid home-content-grid"><section><div class="section-heading"><h2>我的追番</h2><a href="#/add">添加新的追番</a></div><div class="poster-grid" id="subscriptionList">${subscriptions.length ? subscriptions.map((item) => subscriptionCard(item, state)).join('') : emptyState('还没有追番，去添加一部吧。')}</div></section><aside class="card activity-card"><div class="card-header"><div><h2 class="section-title">最近活动</h2><div class="muted small">查看全部</div></div></div><div class="card-body">${taskActivity(state.tasks)}</div><div class="sync-notice"><span>ϟ</span><div><strong>自动同步${syncEnabled ? '已开启' : '已暂停'}</strong><small>${status.next_scan_at ? `下次扫描：${escapeHtml(formatDate(status.next_scan_at))}` : '按轮询周期检查更新。'}</small></div></div></aside></div>`;
+    <div class="grid home-content-grid"><section><div class="section-heading"><div class="section-heading-title"><h2>我的追番</h2><div class="card-size-switch" role="group" aria-label="卡片大小"><button class="card-size-button ${cardSize === 'large' ? 'active' : ''}" type="button" data-card-size="large" title="大卡片">大</button><button class="card-size-button ${cardSize === 'medium' ? 'active' : ''}" type="button" data-card-size="medium" title="中卡片">中</button><button class="card-size-button ${cardSize === 'small' ? 'active' : ''}" type="button" data-card-size="small" title="小卡片">小</button></div></div><a href="#/add">添加新的追番</a></div><div class="poster-grid size-${cardSize}" id="subscriptionList">${subscriptions.length ? subscriptions.map((item) => subscriptionCard(item, state)).join('') : emptyState('还没有追番，去添加一部吧。')}</div></section><aside class="card activity-card"><div class="card-header"><div><h2 class="section-title">最近活动</h2><div class="muted small">查看全部</div></div></div><div class="card-body">${taskActivity(state.tasks)}</div><div class="sync-notice"><span>ϟ</span><div><strong>自动同步${syncEnabled ? '已开启' : '已暂停'}</strong><small>${status.next_scan_at ? `下次扫描：${escapeHtml(formatDate(status.next_scan_at))}` : '按轮询周期检查更新。'}</small></div></div></aside></div>`;
   renderShell('/', content, state);
 
   const list = document.querySelector('#subscriptionList');
+  document.querySelectorAll('[data-card-size]').forEach((button) => button.addEventListener('click', () => {
+    const size = button.dataset.cardSize;
+    if (!CARD_SIZES.includes(size)) return;
+    list.classList.remove(...CARD_SIZES.map((value) => `size-${value}`));
+    list.classList.add(`size-${size}`);
+    document.querySelectorAll('[data-card-size]').forEach((item) => item.classList.toggle('active', item.dataset.cardSize === size));
+    saveCardSize(size);
+  }));
   const filter = () => {
     const needle = document.querySelector('#subscriptionSearch').value.trim().toLowerCase();
     const mode = document.querySelector('#subscriptionFilter').value;
