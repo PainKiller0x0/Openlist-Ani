@@ -40,7 +40,7 @@ button, input, select, textarea { font-family: inherit; }
 .grid { display: grid; gap: 18px; }
 .stats-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .content-grid { grid-template-columns: minmax(0, 1fr) 330px; align-items: start; }
-.poster-grid { display: grid; gap: 18px; }
+.poster-grid { display: grid; grid-template-columns: repeat(5, minmax(135px, 1fr)); gap: 18px; }
 .poster-grid.size-large { grid-template-columns: repeat(5, minmax(135px, 1fr)); }
 .poster-grid.size-medium { grid-template-columns: repeat(8, minmax(88px, 1fr)); gap: 12px; }
 .poster-grid.size-small { grid-template-columns: repeat(10, minmax(72px, 1fr)); gap: 10px; }
