@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · op-ani</title>
+  <link rel="stylesheet" href="/assets/css/tokens.css">
+  <link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <div class="brand brand-large"><span class="brand-mark">OA</span><span>op-ani</span></div>
+    <p class="muted">登录后管理追番订阅、下载任务和运行日志。</p>
+    <form id="loginForm" class="stack-form">
+      <label for="username">用户名</label>
+      <input id="username" name="username" autocomplete="username" required>
+      <label for="password">密码</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button class="primary-button" id="loginButton" type="submit">登录</button>
+      <p class="form-error" id="loginError" role="alert"></p>
+    </form>
+  </main>
+  <script type="module">
+    const form = document.querySelector('#loginForm');
+    const button = document.querySelector('#loginButton');
+    const error = document.querySelector('#loginError');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      button.disabled = true;
+      error.textContent = '';
+      try {
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            username: form.username.value.trim(),
+            password: form.password.value,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || '登录失败');
+        location.href = '/';
+      } catch (err) {
+        error.textContent = err.message || '登录失败';
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

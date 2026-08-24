@@ -6,11 +6,12 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from openlist_ani.logger import logger
 from .auth import SESSION_COOKIE, configured, session_username
-from .frontend import INDEX_HTML, LOGIN_HTML
+from .frontend import INDEX_HTML, LOGIN_HTML, WEB_DIR
 from .router import router
 
 
@@ -34,6 +35,7 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=lifespan,
     )
+    app.mount("/assets", StaticFiles(directory=WEB_DIR / "assets"), name="assets")
     app.include_router(router)
 
     @app.middleware("http")
@@ -50,7 +52,7 @@ def create_app() -> FastAPI:
             "/api/auth/logout",
         }
         username = session_username(request.cookies.get(SESSION_COOKIE))
-        if path in public_paths or username:
+        if path in public_paths or path.startswith("/assets/") or username:
             return await call_next(request)
         if path.startswith("/api/"):
             return JSONResponse({"detail": "请先登录 op-ani"}, status_code=401)
