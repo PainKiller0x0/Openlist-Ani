@@ -165,10 +165,25 @@ class AnimeLibraryApplicationService:
         logger.info(f"Added RSS URL: {url}")
         return True, f"RSS URL added successfully: {url}", updated_urls
 
-    def list_rss_subscriptions(self) -> list[dict[str, Any]]:
+    async def list_rss_subscriptions(self) -> list[dict[str, Any]]:
+        raw_subscriptions = self._get_rss_subscriptions()
+        anime_names = [
+            str(item.get("anime_name", "") or item.get("name", ""))
+            for item in raw_subscriptions
+        ]
+        find_latest = getattr(
+            self._anime_library_repository, "find_latest_episodes", None
+        )
+        latest_episodes = (
+            await find_latest(anime_names) if find_latest is not None else {}
+        )
         subscriptions: list[dict[str, Any]] = []
-        for item in self._get_rss_subscriptions():
+        for item in raw_subscriptions:
             enriched = dict(item)
+            identity_name = str(
+                enriched.get("anime_name", "") or enriched.get("name", "")
+            )
+            enriched["latest_episode"] = latest_episodes.get(identity_name)
             name = sanitize_filename(
                 str(
                     enriched.get("anime_name", "")

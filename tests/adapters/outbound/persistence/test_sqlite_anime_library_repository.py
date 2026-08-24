@@ -95,3 +95,40 @@ async def test_repository_finds_releases_by_many_episode_keys(tmp_path):
             "version": 1,
         }
     ]
+
+
+async def test_repository_tracks_latest_episode_and_strict_rejections(tmp_path):
+    db_path = tmp_path / "data.db"
+    repository = SqliteAnimeLibraryRepository(db_path=db_path)
+    await repository.init()
+    await repository.add_release(
+        AnimeRelease(
+            title="Test Anime - 03",
+            download_url="magnet:?xt=urn:btih:episode-3",
+            anime_name="Test Anime",
+            season=1,
+            episode=3,
+        )
+    )
+    await repository.add_release(
+        AnimeRelease(
+            title="Test Anime - 01",
+            download_url="magnet:?xt=urn:btih:episode-1",
+            anime_name="Test Anime",
+            season=1,
+            episode=1,
+        )
+    )
+
+    assert await repository.find_latest_episodes(["Test Anime"]) == {
+        "Test Anime": 3
+    }
+
+    rejected = AnimeRelease(
+        title="Test Anime - 03 duplicate",
+        download_url="magnet:?xt=urn:btih:rejected",
+    )
+    await repository.record_strict_rejections([rejected])
+    assert await repository.find_strict_rejected_urls([rejected.download_url]) == {
+        rejected.download_url
+    }

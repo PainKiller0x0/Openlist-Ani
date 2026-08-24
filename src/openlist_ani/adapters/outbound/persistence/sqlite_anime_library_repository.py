@@ -41,6 +41,15 @@ class SqliteAnimeLibraryRepository:
                 "CREATE INDEX IF NOT EXISTS idx_anime_episode "
                 "ON resources(anime_name, season, episode)"
             )
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS strict_rejections (
+                    url TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    rejected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
             await db.commit()
 
     async def is_downloaded(self, title: str) -> bool:
@@ -69,6 +78,70 @@ class SqliteAnimeLibraryRepository:
                 rows = await cursor.fetchall()
                 downloaded_titles.update(row[0] for row in rows)
         return downloaded_titles
+
+    async def find_latest_episodes(
+        self, anime_names: list[str]
+    ) -> dict[str, int]:
+        """Return the highest downloaded episode for each anime name."""
+        unique_names = _deduplicate(
+            [name.strip() for name in anime_names if name and name.strip()]
+        )
+        if not unique_names:
+            return {}
+
+        latest: dict[str, int] = {}
+        async with aiosqlite.connect(self.db_path) as db:
+            for chunk in _chunks(unique_names, SQLITE_PARAMETER_CHUNK_SIZE):
+                placeholders = ",".join("?" for _ in chunk)
+                cursor = await db.execute(
+                    "SELECT anime_name, MAX(episode) FROM resources "
+                    "WHERE anime_name IN ("
+                    f"{placeholders}"
+                    ") AND episode IS NOT NULL GROUP BY anime_name",
+                    tuple(chunk),
+                )
+                rows = await cursor.fetchall()
+                latest.update({row[0]: int(row[1]) for row in rows if row[0]})
+        return latest
+
+    async def find_strict_rejected_urls(self, urls: list[str]) -> set[str]:
+        """Return RSS URLs previously rejected by strict DB deduplication."""
+        unique_urls = _deduplicate(urls)
+        if not unique_urls:
+            return set()
+
+        rejected_urls: set[str] = set()
+        async with aiosqlite.connect(self.db_path) as db:
+            for chunk in _chunks(unique_urls, SQLITE_PARAMETER_CHUNK_SIZE):
+                placeholders = ",".join("?" for _ in chunk)
+                cursor = await db.execute(
+                    "SELECT url FROM strict_rejections "
+                    f"WHERE url IN ({placeholders})",
+                    tuple(chunk),
+                )
+                rows = await cursor.fetchall()
+                rejected_urls.update(row[0] for row in rows)
+        return rejected_urls
+
+    async def record_strict_rejections(
+        self, releases: list[AnimeRelease]
+    ) -> None:
+        """Persist RSS URLs blocked by a downloaded-library strict conflict."""
+        rows = [
+            (release.download_url, release.title)
+            for release in releases
+            if release.download_url
+        ]
+        if not rows:
+            return
+
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.executemany(
+                "INSERT OR REPLACE INTO strict_rejections (url, title) "
+                "VALUES (?, ?)",
+                rows,
+            )
+            await db.commit()
 
     async def find_releases_by_episodes(
         self,

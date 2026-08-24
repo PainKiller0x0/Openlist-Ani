@@ -34,6 +34,15 @@ class BulkOnlyRepository:
         return {key: self.records_by_key.get(key, []) for key in keys}
 
 
+class RejectionRecordingRepository(FakeRepository):
+    def __init__(self, records=None):
+        super().__init__(records)
+        self.rejected = []
+
+    async def record_strict_rejections(self, releases):
+        self.rejected.extend(releases)
+
+
 def _release(
     title="[Sub_A] Test Anime - 01 [1080p][简]",
     fansub="Sub_A",
@@ -196,3 +205,26 @@ async def test_strict_filter_prefetches_episode_records_in_bulk():
 
     assert result == []
     assert repo.batch_calls == [(("Test Anime", 1, 1),)]
+
+
+async def test_strict_filter_records_releases_blocked_by_existing_download():
+    repo = RejectionRecordingRepository(
+        [
+            {
+                "fansub": "Sub_A",
+                "quality": "1080p",
+                "languages": "简",
+                "version": 1,
+            }
+        ]
+    )
+
+    result = await StrictRenameFilter(
+        "{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}",
+        repo,
+    ).apply([_release()])
+
+    assert result == []
+    assert [release.title for release in repo.rejected] == [
+        "[Sub_A] Test Anime - 01 [1080p][简]"
+    ]

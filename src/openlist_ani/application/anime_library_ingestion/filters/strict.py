@@ -135,13 +135,14 @@ class StrictRenameFilter:
         records_by_key = await self._records_by_episode(episode_keys)
         active_stems_by_key = self._active_stems_by_episode()
         accepted: list[AnimeRelease] = []
+        db_rejected: list[AnimeRelease] = []
 
         for key, group in groups.items():
             if key is None:
                 # Not enough metadata to compute a stem — bypass.
                 accepted.extend(group)
                 continue
-            filtered = self._filter_group(
+            filtered, group_db_rejected = self._filter_group(
                 self._rename_format,
                 key,
                 group,
@@ -149,6 +150,13 @@ class StrictRenameFilter:
                 active_stems_by_key.get(key, []),
             )
             accepted.extend(filtered)
+            db_rejected.extend(group_db_rejected)
+
+        record_rejections = getattr(
+            self._anime_library_repository, "record_strict_rejections", None
+        )
+        if db_rejected and record_rejections is not None:
+            await record_rejections(db_rejected)
 
         skipped = len(candidates) - len(accepted)
         if skipped:
@@ -170,7 +178,7 @@ class StrictRenameFilter:
         group: list[AnimeRelease],
         db_records: list[dict],
         active_stems: list[tuple[str, str, int]],
-    ) -> list[AnimeRelease]:
+    ) -> tuple[list[AnimeRelease], list[AnimeRelease]]:
         """Filter a single episode group against DB stems + intra-batch dedup."""
         anime_name, season, episode = key
 
@@ -184,10 +192,12 @@ class StrictRenameFilter:
 
         # Phase 1: filter against DB records and active downloads.
         after_db: list[AnimeRelease] = []
+        db_rejected: list[AnimeRelease] = []
         for candidate in group:
             cand_stem = _stem_from_release(rename_format, candidate)
 
             if self._is_blocked_by_db(cand_stem, candidate.version, db_stems):
+                db_rejected.append(candidate)
                 logger.debug(
                     f"Strict: skipping {candidate.title} "
                     f"(rename stem matches existing download)"
@@ -202,7 +212,7 @@ class StrictRenameFilter:
             after_db.append(candidate)
 
         # Phase 2: intra-batch dedup — same stem keeps highest version only.
-        return self._dedup_batch(rename_format, after_db)
+        return self._dedup_batch(rename_format, after_db), db_rejected
 
     async def _records_by_episode(
         self,

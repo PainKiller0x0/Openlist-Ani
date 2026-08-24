@@ -80,6 +80,16 @@ class AnimeLibraryRepositoryPort(Protocol):
 
     async def find_existing_titles(self, candidate_titles: list[str]) -> set[str]: ...
 
+    async def find_latest_episodes(
+        self, anime_names: list[str]
+    ) -> dict[str, int]: ...
+
+    async def find_strict_rejected_urls(self, urls: list[str]) -> set[str]: ...
+
+    async def record_strict_rejections(
+        self, releases: list[AnimeRelease]
+    ) -> None: ...
+
     async def add_release(self, release: AnimeRelease) -> None: ...
 
     async def find_releases_by_episodes(

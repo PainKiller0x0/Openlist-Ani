@@ -114,7 +114,7 @@ async def ui_state() -> dict:
     svc = BackendApiService.get()
     subscriptions = [
         item
-        for item in svc.list_rss_subscriptions()
+        for item in await svc.list_rss_subscriptions()
         if str(item.get("url", ""))
     ]
     return {

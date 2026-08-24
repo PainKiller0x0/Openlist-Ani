@@ -319,12 +319,23 @@ class RSSStage(PipelineStage[None]):
         downloaded_titles = await self._anime_library_repository.find_existing_titles(
             downloadable_titles
         )
+        strict_rejected_urls: set[str] = set()
+        if self._settings.strict_filtering:
+            find_rejected = getattr(
+                self._anime_library_repository, "find_strict_rejected_urls", None
+            )
+            if find_rejected is not None:
+                strict_rejected_urls = await find_rejected(
+                    [entry.download_url for entry in entries if entry.download_url]
+                )
         for entry in entries:
             reason: str | None = None
             if not entry.download_url:
                 reason = "missing_url"
             elif entry.title in downloaded_titles:
                 reason = "already_downloaded"
+            elif entry.download_url in strict_rejected_urls:
+                reason = "strict_rejected"
 
             if reason is None:
                 accepted.append(entry)

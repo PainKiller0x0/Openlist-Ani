@@ -147,8 +147,8 @@ class BackendApiService:
             exclude_patterns=exclude_patterns,
         )
 
-    def list_rss_subscriptions(self) -> list[dict[str, object]]:
-        return self._application_service.list_rss_subscriptions()
+    async def list_rss_subscriptions(self) -> list[dict[str, object]]:
+        return await self._application_service.list_rss_subscriptions()
 
     def update_rss_subscription(
         self,
