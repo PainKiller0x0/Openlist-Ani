@@ -26,6 +26,7 @@ export async function renderTracking(ctx) {
   const subscriptions = (state.rss_subscriptions || []).filter((item) => item.url);
   const failed = (state.tasks || []).filter((task) => task.state === 'failed').length;
   const running = status.running === true || status.status === 'running';
+  const syncEnabled = status.enabled !== false;
   const activeCount = subscriptions.filter((item) => item.enabled !== false).length;
   const content = `${pageHeader('追番中心', '管理正在追番的番剧，保持更新同步。', `<span class="runtime-pill"><i></i> 系统${running ? '运行中' : '空闲'}</span><button class="secondary-button" id="scanNow">立即扫描</button><a class="primary-button" href="#/add">＋ 添加追番</a>`)}
     <section class="grid stats-grid dashboard-stats">
@@ -35,7 +36,7 @@ export async function renderTracking(ctx) {
       <div class="card stat-card"><div class="stat-label">下载错误</div><div class="stat-value">${failed} 个待处理</div><span class="stat-icon danger">△</span></div>
     </section>
     <div class="home-toolbar"><div class="toolbar-search"><span>⌕</span><input class="search-input" id="subscriptionSearch" placeholder="搜索番剧…"></div><select class="status-filter" id="subscriptionFilter"><option value="all">全部状态</option><option value="running">追踪中</option><option value="paused">已暂停</option></select><span class="total-count">▥ 共 ${subscriptions.length} 部追番</span></div>
-    <div class="grid home-content-grid"><section><div class="section-heading"><h2>我的追番</h2><a href="#/add">添加新的追番</a></div><div class="poster-grid" id="subscriptionList">${subscriptions.length ? subscriptions.map((item) => subscriptionCard(item, state)).join('') : emptyState('还没有追番，去添加一部吧。')}</div></section><aside class="card activity-card"><div class="card-header"><div><h2 class="section-title">最近活动</h2><div class="muted small">查看全部</div></div></div><div class="card-body">${taskActivity(state.tasks)}</div><div class="sync-notice"><span>ϟ</span><div><strong>自动同步${status.running === false ? '已暂停' : '已开启'}</strong><small>${status.next_scan_at ? `下次扫描：${escapeHtml(formatDate(status.next_scan_at))}` : '按轮询周期检查更新。'}</small></div></div></aside></div>`;
+    <div class="grid home-content-grid"><section><div class="section-heading"><h2>我的追番</h2><a href="#/add">添加新的追番</a></div><div class="poster-grid" id="subscriptionList">${subscriptions.length ? subscriptions.map((item) => subscriptionCard(item, state)).join('') : emptyState('还没有追番，去添加一部吧。')}</div></section><aside class="card activity-card"><div class="card-header"><div><h2 class="section-title">最近活动</h2><div class="muted small">查看全部</div></div></div><div class="card-body">${taskActivity(state.tasks)}</div><div class="sync-notice"><span>ϟ</span><div><strong>自动同步${syncEnabled ? '已开启' : '已暂停'}</strong><small>${status.next_scan_at ? `下次扫描：${escapeHtml(formatDate(status.next_scan_at))}` : '按轮询周期检查更新。'}</small></div></div></aside></div>`;
   renderShell('/', content, state);
 
   const list = document.querySelector('#subscriptionList');
