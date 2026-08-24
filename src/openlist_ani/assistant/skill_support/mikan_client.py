@@ -311,6 +311,26 @@ class MikanClient:
             List of dicts with ``id`` (int), ``name`` (str), and
             ``releases`` (list[dict]) for each subtitle group.
         """
+        html = await self._fetch_bangumi_page(bangumi_id)
+        if not html:
+            return []
+        return self._parse_subgroups(html, self._base_url)
+
+    async def fetch_bangumi_group_summaries(
+        self, bangumi_id: int
+    ) -> list[dict[str, Any]]:
+        """Fetch only subtitle-group names and release counts.
+
+        The group-selection page does not need release URLs or magnet links.
+        Avoiding that detailed extraction keeps this UI path separate from
+        the assistant path that still needs full release data.
+        """
+        html = await self._fetch_bangumi_page(bangumi_id)
+        if not html:
+            return []
+        return self._parse_subgroup_summaries(html)
+
+    async def _fetch_bangumi_page(self, bangumi_id: int) -> str:
         session = self._ensure_session()
         url = self._url(f"/Home/Bangumi/{bangumi_id}")
         try:
@@ -320,13 +340,11 @@ class MikanClient:
                         f"Mikan: Failed to fetch bangumi {bangumi_id} "
                         f"page (status={resp.status})"
                     )
-                    return []
-                html = await resp.text()
+                    return ""
+                return await resp.text()
         except aiohttp.ClientError as exc:
             logger.error(f"Mikan: Failed to fetch bangumi {bangumi_id} page: {exc}")
-            return []
-
-        return self._parse_subgroups(html, self._base_url)
+            return ""
 
     def rss_url(self, bangumi_id: int, subgroup_id: int | None = None) -> str:
         """Return the RSS URL for a bangumi or one of its subtitle groups."""
@@ -461,6 +479,40 @@ class MikanClient:
                 soup, group_id, base_url=base_url
             )
             results.append({"id": group_id, "name": name, "releases": releases})
+
+        return results
+
+    @staticmethod
+    def _parse_subgroup_summaries(html: str) -> list[dict[str, Any]]:
+        """Parse subtitle-group names and row counts without release details."""
+        soup = BeautifulSoup(html, "lxml")
+        results: list[dict[str, Any]] = []
+        seen: set[int] = set()
+
+        for link in soup.select("a.subgroup-name[data-anchor]"):
+            anchor = link.get("data-anchor", "")
+            match = re.search(r"#(\d+)", anchor)
+            if not match:
+                continue
+            group_id = int(match.group(1))
+            name = link.get_text(strip=True)
+            if not group_id or not name or group_id in seen:
+                continue
+            seen.add(group_id)
+
+            header_div = soup.find("div", id=str(group_id))
+            ep_table = (
+                header_div.find_next_sibling("div", class_="episode-table")
+                if header_div
+                else None
+            )
+            results.append(
+                {
+                    "id": group_id,
+                    "name": name,
+                    "release_count": len(ep_table.select("tr")) if ep_table else 0,
+                }
+            )
 
         return results
 

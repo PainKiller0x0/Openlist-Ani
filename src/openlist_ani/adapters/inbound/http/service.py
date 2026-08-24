@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from time import monotonic
+
 from openlist_ani.application.anime_library_ingestion.application_service import (
     AnimeLibraryApplicationService,
 )
@@ -83,6 +86,9 @@ class BackendApiService:
 
     def __init__(self, application_service: AnimeLibraryApplicationService) -> None:
         self._application_service = application_service
+        self._mikan_group_cache: dict[
+            tuple[str, int], tuple[float, dict[str, object]]
+        ] = {}
 
     @classmethod
     def init(
@@ -304,14 +310,20 @@ class BackendApiService:
         base_url: str | None = None,
     ) -> dict[str, object]:
         """List subtitle groups and ready-to-use RSS URLs for a bangumi."""
+        configured_base_url = (base_url or config.mikan.base_url).strip().rstrip("/")
+        cache_key = (configured_base_url, int(bangumi_id))
+        cached = self._mikan_group_cache.get(cache_key)
+        if cached and monotonic() - cached[0] < 300:
+            return deepcopy(cached[1])
+
         client = MikanClient(
             username=config.mikan.username,
             password=config.mikan.password,
-            base_url=base_url or config.mikan.base_url,
+            base_url=configured_base_url,
         )
         try:
-            groups = await client.fetch_bangumi_subgroups(bangumi_id)
-            return {
+            groups = await client.fetch_bangumi_group_summaries(bangumi_id)
+            result = {
                 "success": True,
                 "bangumi_id": bangumi_id,
                 "all_rss_url": client.rss_url(bangumi_id),
@@ -319,12 +331,14 @@ class BackendApiService:
                     {
                         "id": group.get("id"),
                         "name": group.get("name", "未命名字幕组"),
-                        "release_count": len(group.get("releases", [])),
+                        "release_count": group.get("release_count", 0),
                         "rss_url": client.rss_url(bangumi_id, group.get("id")),
                     }
                     for group in groups
                 ],
             }
+            self._mikan_group_cache[cache_key] = (monotonic(), result)
+            return deepcopy(result)
         except Exception as exc:
             return {"success": False, "message": f"Mikan 字幕组读取失败：{exc}"}
         finally:

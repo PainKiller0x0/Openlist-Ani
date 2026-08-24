@@ -65,6 +65,7 @@ export async function renderSelect(ctx) {
   if (!selected) return ctx.navigate('#/add');
   let groups = ctx.flow.groups;
   if (!groups) {
+    renderShell('#/add', `${pageHeader('选择字幕组', '正在读取可用字幕组')}${stepper(2)}<div class="card"><div class="card-body"><div class="loading-state">⌛ 正在读取 Mikan 字幕组，请稍候…</div></div></div>`, {});
     try { const response = await api.post('/api/ui/mikan/groups', {bangumi_id: selected.bangumi_id}); groups = response.groups || []; ctx.flow.groups = groups; ctx.flow.allRssUrl = response.all_rss_url || ''; }
     catch (error) { renderShell('#/add', `${pageHeader('选择字幕组')}<div class="notice">${escapeHtml(error.message)}</div>`, {}); return; }
   }

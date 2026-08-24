@@ -1,4 +1,6 @@
 from openlist_ani.assistant.skill_support.mikan_client import MikanClient
+from openlist_ani.adapters.inbound.http import service as http_service
+from openlist_ani.adapters.inbound.http.service import BackendApiService
 from openlist_ani.adapters.outbound.feed_sources.factory import FeedSourceFactory
 from openlist_ani.adapters.outbound.feed_sources.mikan import MikanFeedSource
 from openlist_ani.adapters.outbound.configuration.settings import MikanConfig
@@ -75,6 +77,23 @@ def test_mikan_subgroup_parser_returns_group_and_release():
     assert result[0]["releases"][0]["magnet"] == "magnet:?xt=urn:btih:abc"
 
 
+def test_mikan_subgroup_summary_parser_only_counts_releases():
+    html = """
+    <a class="subgroup-name" data-anchor="#359">ANi</a>
+    <div id="359"></div>
+    <div class="episode-table">
+      <table><tbody>
+        <tr><td><a class="magnet-link-wrap" href="/Home/Episode/abc">Episode 1</a></td></tr>
+        <tr><td><a class="magnet-link-wrap" href="/Home/Episode/def">Episode 2</a></td></tr>
+      </tbody></table>
+    </div>
+    """
+
+    result = MikanClient._parse_subgroup_summaries(html)
+
+    assert result == [{"id": 359, "name": "ANi", "release_count": 2}]
+
+
 def test_configured_mikan_rss_uses_mikan_feed_parser():
     source = FeedSourceFactory().create(
         "https://mikanani.kas.pub/RSS/Bangumi?bangumiId=3992&subgroupid=583"
@@ -82,3 +101,32 @@ def test_configured_mikan_rss_uses_mikan_feed_parser():
 
     assert isinstance(source, MikanFeedSource)
     assert source.entry_concurrency == 10
+
+
+async def test_backend_mikan_groups_use_summary_cache(monkeypatch):
+    calls = 0
+
+    class FakeMikanClient:
+        def __init__(self, **kwargs):
+            self.base_url = kwargs["base_url"]
+
+        async def fetch_bangumi_group_summaries(self, bangumi_id):
+            nonlocal calls
+            calls += 1
+            return [{"id": 359, "name": "ANi", "release_count": 2}]
+
+        def rss_url(self, bangumi_id, subgroup_id=None):
+            return f"https://mikan.example/{bangumi_id}/{subgroup_id or 'all'}"
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(http_service, "MikanClient", FakeMikanClient)
+    backend = BackendApiService(object())
+
+    first = await backend.list_mikan_groups(3992, base_url="https://mikan.example")
+    first["groups"][0]["name"] = "mutated"
+    second = await backend.list_mikan_groups(3992, base_url="https://mikan.example")
+
+    assert calls == 1
+    assert second["groups"][0]["name"] == "ANi"
