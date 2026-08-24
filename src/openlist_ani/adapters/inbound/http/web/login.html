@@ -5,20 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>登录 · op-ani</title>
   <link rel="stylesheet" href="/assets/css/tokens.css">
+  <link rel="stylesheet" href="/assets/css/components.css">
   <link rel="stylesheet" href="/assets/css/app.css">
 </head>
 <body class="login-page">
   <main class="login-card">
-    <div class="brand brand-large"><span class="brand-mark">OA</span><span>op-ani</span></div>
-    <p class="muted">登录后管理追番订阅、下载任务和运行日志。</p>
+    <div class="login-brand"><span class="brand-mark">▶</span><div><strong>op-ani</strong><small>自托管追番工具</small></div></div>
+    <div class="login-heading">
+      <span class="eyebrow">WELCOME BACK</span>
+      <h1>登录 op-ani</h1>
+      <p class="muted">登录后管理追番订阅、下载任务和运行日志。</p>
+    </div>
     <form id="loginForm" class="stack-form">
-      <label for="username">用户名</label>
-      <input id="username" name="username" autocomplete="username" required>
-      <label for="password">密码</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button class="primary-button" id="loginButton" type="submit">登录</button>
+      <label class="login-field" for="username"><span>用户名</span><input id="username" name="username" autocomplete="username" required></label>
+      <label class="login-field" for="password"><span>密码</span><input id="password" name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary-button login-button" id="loginButton" type="submit"><span>进入追番中心</span><b>→</b></button>
       <p class="form-error" id="loginError" role="alert"></p>
     </form>
+    <p class="login-footnote">仅限授权用户访问</p>
   </main>
   <script type="module">
     const form = document.querySelector('#loginForm');
@@ -33,8 +37,8 @@
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
-            username: form.username.value.trim(),
-            password: form.password.value,
+            username: document.querySelector('#username').value.trim(),
+            password: document.querySelector('#password').value,
           }),
         });
         const data = await response.json().catch(() => ({}));

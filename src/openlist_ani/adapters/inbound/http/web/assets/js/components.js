@@ -69,9 +69,11 @@ export function confirmDialog(title, message, confirmLabel = '确认') {
 export function renderShell(active, content, state = {}) {
   const links = [
     ['/', '⌂', '追番中心'], ['#/add', '+', '添加追番'], ['#/downloads', '⇩', '下载任务'],
-    ['#/logs', '≡', '系统日志'], ['#/settings', '⚙', '设置'],
+    ['#/logs', '▤', '系统日志'], ['#/settings', '⚙', '设置'],
   ];
-  document.querySelector('#app').innerHTML = `<div class="shell"><aside class="sidebar"><a class="brand" href="#/"><span class="brand-mark">OA</span><span>op-ani</span></a><nav class="nav">${links.map(([href, icon, label]) => `<a class="${active === href ? 'active' : ''}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join('')}</nav><div class="sidebar-foot"><span>OpenList：${escapeHtml(state.openlist_url || '未配置')}</span><a href="/login" data-logout>退出登录</a></div></aside><main class="main">${content}</main></div>`;
+  const openList = state.openlist_url || state.openlist_base_url || '';
+  const current = (href) => active === href || (active === '/' && href === '/');
+  document.querySelector('#app').innerHTML = `<div class="shell"><aside class="sidebar"><a class="brand" href="#/"><span class="brand-mark">▶</span><span class="brand-copy"><strong>op-ani</strong><small>自托管追番工具</small></span></a><nav class="nav"><div class="nav-group-label">工作台</div>${links.map(([href, icon, label]) => `<a class="${current(href) ? 'active' : ''}" href="${href}"><span class="nav-icon">${icon}</span><span>${label}</span></a>`).join('')}</nav><div class="sidebar-foot"><div class="connection-card"><div class="connection-title"><span class="connection-dot"></span>OpenList</div><div class="connection-value">${escapeHtml(openList || '未配置')}</div></div><a class="logout-link" href="/login" data-logout>退出登录</a></div></aside><main class="main">${content}</main></div>`;
   document.querySelector('[data-logout]')?.addEventListener('click', async (event) => {
     event.preventDefault();
     await fetch('/api/auth/logout', {method: 'POST'});
@@ -80,7 +82,8 @@ export function renderShell(active, content, state = {}) {
 }
 
 export function pageHeader(title, subtitle = '', actions = '') {
-  return `<header class="topbar"><div><h1>${escapeHtml(title)}</h1>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div><div class="page-actions">${actions}</div></header>`;
+  const crumb = title === '追番中心' ? '媒体库' : title === '添加追番' || title === '识别与下载预览' ? '追番中心' : 'op-ani';
+  return `<header class="topbar"><div class="page-heading"><div class="breadcrumbs"><span>${escapeHtml(crumb)}</span><b>›</b><strong>${escapeHtml(title)}</strong></div><h1>${escapeHtml(title)}</h1>${subtitle ? `<p>${escapeHtml(subtitle)}</p>` : ''}</div><div class="page-actions">${actions}</div></header>`;
 }
 
 export function emptyState(message) { return `<div class="empty">${escapeHtml(message)}</div>`; }

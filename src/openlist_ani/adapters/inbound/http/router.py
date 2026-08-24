@@ -68,17 +68,20 @@ async def auth_session(request: Request) -> dict[str, object]:
 
 
 @router.post("/auth/login")
-async def auth_login(payload: LoginRequest, response: Response) -> dict[str, object]:
+async def auth_login(
+    payload: LoginRequest, request: Request, response: Response
+) -> dict[str, object]:
     if not configured():
         return {"success": True, "authenticated": True, "username": payload.username}
     if payload.username.strip() != configured_username() or not verify_password(payload.password):
         raise HTTPException(status_code=401, detail="用户名或密码错误")
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
     response.set_cookie(
         SESSION_COOKIE,
         issue_session(configured_username()),
         max_age=SESSION_TTL_SECONDS,
         httponly=True,
-        secure=True,
+        secure=request.url.scheme == "https" or forwarded_proto == "https",
         samesite="lax",
         path="/",
     )
