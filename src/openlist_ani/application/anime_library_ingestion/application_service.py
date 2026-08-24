@@ -627,7 +627,7 @@ class AnimeLibraryApplicationService:
         # previous N serial LLM calls plus a second RSS fetch.
         preview_limit = min(entry_limit, 24)
         preview_candidates = (accepted or (parsed.entries or []))[:preview_limit]
-        validated_preview = await self._parse_and_validate_metadata(preview_candidates)
+        validated_preview = await self._parse_preview_metadata(preview_candidates)
         metadata = await self.resolve_rss_subscription(
             url,
             preferred_name,
@@ -686,7 +686,7 @@ class AnimeLibraryApplicationService:
                 "llm_parsed": result is not None,
             }
             if result is not None:
-                payload["tmdb_id"] = result.tmdb_id
+                payload["tmdb_id"] = result.tmdb_id or metadata.get("tmdb_id")
                 payload["rename_preview"] = filename_planner.stem(enriched)
                 payload["download_directory"] = directory_planner.target_directory_path(
                     self._settings.download_path, enriched
@@ -713,6 +713,26 @@ class AnimeLibraryApplicationService:
             "entries": [entry_payload(release) for release in ordered[:entry_limit]],
             "truncated": len(ordered) > entry_limit,
         }
+
+    async def _parse_preview_metadata(
+        self, entries: list[AnimeRelease]
+    ) -> list[ParseResult]:
+        """Parse titles for the interactive preview without full TMDB checks.
+
+        Preview only needs the LLM-derived name, season, episode, and naming
+        fields.  Authoritative identity and episode validation still run in
+        the ingestion pipeline before a download task is created.
+        """
+        if not entries:
+            return []
+        try:
+            return await self._metadata_parser.parse(entries)
+        except Exception as error:
+            logger.debug(f"RSS metadata preview parsing failed: {error}")
+            return [
+                ParseResult(success=False, release_title=entry.title, error=str(error))
+                for entry in entries
+            ]
 
     async def _parse_and_validate_metadata(
         self, entries: list[AnimeRelease]

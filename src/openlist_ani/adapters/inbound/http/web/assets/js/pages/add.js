@@ -69,11 +69,11 @@ export async function renderSelect(ctx) {
     try { const response = await api.post('/api/ui/mikan/groups', {bangumi_id: selected.bangumi_id}); groups = response.groups || []; ctx.flow.groups = groups; ctx.flow.allRssUrl = response.all_rss_url || ''; }
     catch (error) { renderShell('#/add', `${pageHeader('选择字幕组')}<div class="notice">${escapeHtml(error.message)}</div>`, {}); return; }
   }
-  const content = `${pageHeader('选择作品', '从 Mikan 搜索结果中选择要追踪的番剧', '<span class="muted">媒体库 · 本地部署</span>')}${stepper(2)}<div class="card"><div class="card-header"><div><h2 class="section-title">${escapeHtml(selected.name || '未命名番剧')}</h2><div class="muted">Mikan Bangumi #${escapeHtml(selected.bangumi_id)}</div></div></div><div class="card-body"><div class="group-list">${groups.length ? groups.map((group, index) => `<button class="group-item" data-group-index="${index}"><span><strong>${escapeHtml(group.name || '未命名字幕组')}</strong><br><span class="result-meta">${escapeHtml(group.release_count ?? 0)} 个条目 · 选择后识别 RSS</span></span><span>选择 →</span></button>`).join('') : '<div class="empty">没有可用字幕组。</div>'}</div>${ctx.flow.allRssUrl ? `<div class="button-row" style="margin-top:16px"><button class="secondary-button" id="useAllGroups">使用全部字幕组</button></div>` : ''}</div></div>`;
+  const content = `${pageHeader('选择字幕组', '从已选作品中选择要追踪的字幕来源', '<span class="muted">媒体库 · 本地部署</span>')}${stepper(3)}<div class="card"><div class="card-header"><div><h2 class="section-title">${escapeHtml(selected.name || '未命名番剧')}</h2><div class="muted">Mikan Bangumi #${escapeHtml(selected.bangumi_id)}</div></div></div><div class="card-body"><div class="group-list">${groups.length ? groups.map((group, index) => `<button class="group-item" data-group-index="${index}"><span><strong>${escapeHtml(group.name || '未命名字幕组')}</strong><br><span class="result-meta">${escapeHtml(group.release_count ?? 0)} 个条目 · 选择后识别 RSS</span></span><span>选择 →</span></button>`).join('') : '<div class="empty">没有可用字幕组。</div>'}</div>${ctx.flow.allRssUrl ? `<div class="button-row" style="margin-top:16px"><button class="secondary-button" id="useAllGroups">使用全部字幕组</button></div>` : ''}</div></div>`;
   renderShell('#/add', content, {});
   const choose = async (group) => {
     const button = document.querySelector(`[data-group-index="${group.index}"]`);
-    if (button) setLoading(button, true, '读取中');
+    if (button) setLoading(button, true, '识别预览中');
     try {
       const rssResponse = await api.post('/api/ui/mikan/rss', {bangumi_id: selected.bangumi_id, subgroup_id: group.id});
       ctx.flow.rssUrl = rssResponse.rss_url;
@@ -84,7 +84,7 @@ export async function renderSelect(ctx) {
   };
   document.querySelectorAll('[data-group-index]').forEach((button, index) => button.addEventListener('click', () => choose({...groups[index], index})));
   document.querySelector('#useAllGroups')?.addEventListener('click', async (event) => {
-    setLoading(event.currentTarget, true, '读取中');
+    setLoading(event.currentTarget, true, '识别预览中');
     try { ctx.flow.rssUrl = ctx.flow.allRssUrl; ctx.flow.preferredName = selected.name || ''; ctx.flow.preview = await api.post('/api/ui/rss/preview', {url: ctx.flow.rssUrl, name: ctx.flow.preferredName}); ctx.navigate('#/add/preview'); }
     catch (error) { toast(error.message, 'error'); setLoading(event.currentTarget, false); }
   });
