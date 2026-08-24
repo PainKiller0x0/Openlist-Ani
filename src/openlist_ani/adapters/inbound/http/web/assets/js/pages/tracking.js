@@ -24,7 +24,7 @@ function subscriptionCard(item, state) {
   const url = encodeURIComponent(item.url || '');
   const title = item.name || item.anime_name || '未命名订阅';
   return `<article class="poster-card subscription-card" data-url="${escapeHtml(item.url)}">
-    <a class="subscription-card-link" href="#/subscription/${url}">${poster(item.poster_url, title)}<div class="poster-copy"><div class="poster-title">${escapeHtml(title)}</div><div class="poster-meta"><span>${enabled ? '追踪中' : '已暂停'}</span><span>${escapeHtml(latestText)}</span></div></div></a>
+    <a class="subscription-card-link" href="#/subscription/${url}">${poster(item.poster_url, title)}<div class="poster-copy"><div class="poster-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div><div class="poster-meta"><span>${enabled ? '追踪中' : '已暂停'}</span><span>${escapeHtml(latestText)}</span></div></div></a>
     <div class="subscription-card-status">${statusBadge(enabled ? 'running' : 'paused', enabled ? '追踪中' : '已暂停')}</div>
     <div class="card-actions"><button class="ghost-button" data-action="toggle" title="${enabled ? '暂停追番' : '继续追番'}">${enabled ? '暂停' : '继续'}</button><button class="ghost-button" data-action="remove" title="删除订阅">删除</button></div>
   </article>`;
