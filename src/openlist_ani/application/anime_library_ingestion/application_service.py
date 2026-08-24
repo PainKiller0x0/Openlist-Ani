@@ -248,11 +248,12 @@ class AnimeLibraryApplicationService:
                 tmdb = await self._lookup_tmdb_show_by_id(tmdb_id)
             except Exception as e:
                 logger.debug(f"TMDB id lookup failed for {tmdb_id}: {e}")
-        if tmdb is None and self._lookup_tmdb_show and inferred_name:
+        lookup_name = authoritative_name or inferred_name
+        if tmdb is None and self._lookup_tmdb_show and lookup_name:
             try:
-                tmdb = await self._lookup_tmdb_show(inferred_name)
+                tmdb = await self._lookup_tmdb_show(lookup_name)
             except Exception as e:
-                logger.debug(f"TMDB poster lookup failed for {inferred_name}: {e}")
+                logger.debug(f"TMDB poster lookup failed for {lookup_name}: {e}")
         if tmdb:
             tmdb_id = tmdb.get("id") or tmdb_id
             poster_url = tmdb.get("poster_url") or ""
@@ -611,7 +612,7 @@ class AnimeLibraryApplicationService:
         entry_limit: int = 80,
     ) -> dict[str, Any]:
         """Fetch, identify and preview an RSS before it is saved."""
-        parsed = await self.parse_rss(url)
+        parsed = await self.parse_rss(url, enrich_metadata=False)
         if not parsed.success:
             return {"success": False, "message": parsed.message}
 
@@ -779,6 +780,8 @@ class AnimeLibraryApplicationService:
         self,
         url: str,
         limit: int | None = None,
+        *,
+        enrich_metadata: bool = True,
     ) -> ParseRSSOutcome:
         if not url:
             return ParseRSSOutcome(success=False, message="'url' is required.")
@@ -791,7 +794,17 @@ class AnimeLibraryApplicationService:
             )
 
         try:
-            entries = await feed_source.fetch_feed(url)
+            if enrich_metadata:
+                entries = await feed_source.fetch_feed(url)
+            else:
+                try:
+                    entries = await feed_source.fetch_feed(
+                        url, enrich_metadata=False
+                    )
+                except TypeError:
+                    # Keep custom feed-source test doubles and older adapters
+                    # compatible while the optional fast-preview path rolls out.
+                    entries = await feed_source.fetch_feed(url)
         except Exception as e:
             logger.warning(f"parse_rss: feed fetch failed for {url}: {e}")
             return ParseRSSOutcome(success=False, message=f"Failed to fetch RSS: {e}")

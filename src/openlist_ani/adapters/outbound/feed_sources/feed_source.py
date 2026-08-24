@@ -15,7 +15,9 @@ class FeedSource(ABC):
 
     entry_concurrency: int | None = None
 
-    async def fetch_feed(self, url: str) -> list[AnimeRelease]:
+    async def fetch_feed(
+        self, url: str, *, enrich_metadata: bool = True
+    ) -> list[AnimeRelease]:
         """Fetch and parse RSS feed from a URL.
 
         Args:
@@ -36,7 +38,11 @@ class FeedSource(ABC):
 
                     feed = feedparser.parse(content)
 
-                    return await self._parse_entries(feed.entries, session)
+                    return await self._parse_entries(
+                        feed.entries,
+                        session,
+                        enrich_metadata=enrich_metadata,
+                    )
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.warning(f"RSS fetch failed for {url}: {e}")
             return []
@@ -59,10 +65,18 @@ class FeedSource(ABC):
         """
         pass
 
+    async def parse_entry_without_metadata(
+        self, entry, session: aiohttp.ClientSession
+    ) -> AnimeRelease | None:
+        """Parse an entry without optional source-page enrichment."""
+        return await self.parse_entry(entry, session)
+
     async def _parse_entries(
         self,
         entries,
         session: aiohttp.ClientSession,
+        *,
+        enrich_metadata: bool = True,
     ) -> list[AnimeRelease]:
         concurrency = self.entry_concurrency
         semaphore = (
@@ -72,10 +86,15 @@ class FeedSource(ABC):
         )
 
         async def parse_one(entry):
+            parser = (
+                self.parse_entry
+                if enrich_metadata
+                else self.parse_entry_without_metadata
+            )
             if semaphore is None:
-                return await self.parse_entry(entry, session)
+                return await parser(entry, session)
             async with semaphore:
-                return await self.parse_entry(entry, session)
+                return await parser(entry, session)
 
         tasks = [parse_one(entry) for entry in entries]
         results = await asyncio.gather(*tasks, return_exceptions=True)

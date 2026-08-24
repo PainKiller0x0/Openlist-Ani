@@ -189,3 +189,21 @@ class MikanFeedSource(FeedSource):
 
         entry_data.update(metadata)
         return AnimeRelease(**entry_data)
+
+    async def parse_entry_without_metadata(
+        self, entry, session: aiohttp.ClientSession
+    ) -> AnimeRelease | None:
+        """Parse a preview entry without waiting for the Mikan detail page."""
+        title = getattr(entry, "title", None)
+        download_url = self._get_download_url(entry)
+
+        if not download_url or not title:
+            return None
+
+        return AnimeRelease(
+            title=title,
+            download_url=download_url,
+            anime_name=None,
+            season=None,
+            fansub=None,
+        )

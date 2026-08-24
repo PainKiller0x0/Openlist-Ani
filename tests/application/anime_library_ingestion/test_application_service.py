@@ -78,3 +78,42 @@ async def test_preview_metadata_skips_authoritative_validation():
 
     assert results[0].result.anime_name == "Test Anime"
     assert validator.calls == 0
+
+
+async def test_resolve_subscription_uses_parsed_name_for_tmdb_lookup():
+    lookup_names = []
+
+    async def lookup_tmdb_show(name):
+        lookup_names.append(name)
+        return {
+            "id": 123,
+            "name": "Test Anime",
+            "first_air_date": "2024-01-01",
+            "poster_url": "https://image.test/poster.jpg",
+        }
+
+    service = object.__new__(AnimeLibraryApplicationService)
+    service._lookup_tmdb_show = lookup_tmdb_show
+    service._lookup_tmdb_show_by_id = None
+
+    result = ParseResult(
+        success=True,
+        result=ReleaseTitleParseResult(
+            anime_name="Test Anime",
+            season=4,
+            episode=1,
+            languages=[LanguageType.CHS],
+            version=1,
+        ),
+    )
+
+    metadata = await service.resolve_rss_subscription(
+        "https://example.test/rss",
+        preferred_name="Re: Test Anime 第四季 袭失篇",
+        entries=[AnimeRelease(title="Test", download_url="https://example.test/test")],
+        validated_results=[result],
+    )
+
+    assert lookup_names == ["Test Anime"]
+    assert metadata["tmdb_id"] == 123
+    assert metadata["poster_url"] == "https://image.test/poster.jpg"
