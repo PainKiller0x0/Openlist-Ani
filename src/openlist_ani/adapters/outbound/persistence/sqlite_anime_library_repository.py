@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import re
 from typing import TypeVar
 
 import aiosqlite
@@ -80,9 +81,17 @@ class SqliteAnimeLibraryRepository:
         return downloaded_titles
 
     async def find_latest_episodes(
-        self, anime_names: list[str]
+        self,
+        anime_names: list[str],
+        seasons_by_name: dict[str, int | None] | None = None,
     ) -> dict[str, int]:
-        """Return the highest downloaded episode for each anime name."""
+        """Return the highest downloaded episode for each requested anime name.
+
+        Exact names remain the fast path.  When metadata normalization changed
+        the stored title (for example, adding a season and year), fall back to
+        a normalized series-name match and keep the requested season when one
+        was supplied.
+        """
         unique_names = _deduplicate(
             [name.strip() for name in anime_names if name and name.strip()]
         )
@@ -90,18 +99,59 @@ class SqliteAnimeLibraryRepository:
             return {}
 
         latest: dict[str, int] = {}
+        requested_seasons = seasons_by_name or {}
         async with aiosqlite.connect(self.db_path) as db:
             for chunk in _chunks(unique_names, SQLITE_PARAMETER_CHUNK_SIZE):
                 placeholders = ",".join("?" for _ in chunk)
                 cursor = await db.execute(
-                    "SELECT anime_name, MAX(episode) FROM resources "
+                    "SELECT anime_name, season, MAX(episode) FROM resources "
                     "WHERE anime_name IN ("
                     f"{placeholders}"
-                    ") AND episode IS NOT NULL GROUP BY anime_name",
+                    ") AND episode IS NOT NULL GROUP BY anime_name, season",
                     tuple(chunk),
                 )
                 rows = await cursor.fetchall()
-                latest.update({row[0]: int(row[1]) for row in rows if row[0]})
+                grouped: dict[str, list[tuple[int | None, int]]] = {}
+                for anime_name, season, episode in rows:
+                    if anime_name and episode is not None:
+                        grouped.setdefault(anime_name, []).append(
+                            (season, int(episode))
+                        )
+                for anime_name in chunk:
+                    candidates = grouped.get(anime_name, [])
+                    requested_season = requested_seasons.get(anime_name)
+                    if requested_season is not None:
+                        candidates = [
+                            (season, episode)
+                            for season, episode in candidates
+                            if season == requested_season
+                        ]
+                    if candidates:
+                        latest[anime_name] = max(
+                            episode for _, episode in candidates
+                        )
+
+            missing_names = [name for name in unique_names if name not in latest]
+            if missing_names:
+                cursor = await db.execute(
+                    "SELECT anime_name, season, episode FROM resources "
+                    "WHERE anime_name IS NOT NULL AND episode IS NOT NULL"
+                )
+                rows = await cursor.fetchall()
+                for requested_name in missing_names:
+                    requested_key = _normalize_series_name(requested_name)
+                    requested_season = requested_seasons.get(requested_name)
+                    candidates = [
+                        int(episode)
+                        for anime_name, season, episode in rows
+                        if _normalize_series_name(anime_name) == requested_key
+                        and (
+                            requested_season is None
+                            or season == requested_season
+                        )
+                    ]
+                    if candidates:
+                        latest[requested_name] = max(candidates)
         return latest
 
     async def find_strict_rejected_urls(self, urls: list[str]) -> set[str]:
@@ -241,6 +291,19 @@ class SqliteAnimeLibraryRepository:
 
 def _deduplicate(items: list[T]) -> list[T]:
     return list(dict.fromkeys(items))
+
+
+_YEAR_TOKEN_RE = re.compile(r"[（(\[【]\s*\d{4}\s*[）)\]】]")
+_SEASON_TOKEN_RE = re.compile(
+    r"第\s*[一二三四五六七八九十百千万0-9]+\s*季"
+    r"|(?i:season\s*[0-9]+|s[0-9]{1,2})(?=$|[\s._()（）\[\]【】-])"
+)
+
+
+def _normalize_series_name(name: str) -> str:
+    normalized = _YEAR_TOKEN_RE.sub("", str(name or ""))
+    normalized = _SEASON_TOKEN_RE.sub("", normalized)
+    return re.sub(r"[^\w\u4e00-\u9fff]", "", normalized.casefold())
 
 
 def _chunks(items: list[T], size: int):

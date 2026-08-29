@@ -357,6 +357,15 @@ class TestConfigManager:
         assert mgr.update_rss_subscription("http://new.rss", enabled=True) is True
         assert mgr.rss.urls == ["http://new.rss"]
 
+    def test_rss_episode_offset_persists(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mgr = ConfigManager("config.toml")
+        mgr.add_rss_url("http://new.rss", episode_offset=72)
+
+        mgr2 = ConfigManager("config.toml")
+
+        assert mgr2.rss.subscriptions[0].episode_offset == 72
+
     def test_rss_exclusion_patterns_persist(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         mgr = ConfigManager("config.toml")

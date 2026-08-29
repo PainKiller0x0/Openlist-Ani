@@ -137,6 +137,7 @@ class BackendApiService:
         name: str = "",
         anime_name: str = "",
         download_directory_name: str = "",
+        episode_offset: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -147,6 +148,7 @@ class BackendApiService:
             name=name,
             anime_name=anime_name,
             download_directory_name=download_directory_name,
+            episode_offset=episode_offset,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -163,6 +165,7 @@ class BackendApiService:
         name: str | None = None,
         anime_name: str | None = None,
         download_directory_name: str | None = None,
+        episode_offset: int | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -174,6 +177,7 @@ class BackendApiService:
             name=name,
             anime_name=anime_name,
             download_directory_name=download_directory_name,
+            episode_offset=episode_offset,
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
@@ -189,6 +193,7 @@ class BackendApiService:
         name: str = "",
         anime_name: str = "",
         download_directory_name: str = "",
+        episode_offset: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -200,6 +205,7 @@ class BackendApiService:
             name=name,
             anime_name=anime_name,
             download_directory_name=download_directory_name,
+            episode_offset=episode_offset,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -213,6 +219,7 @@ class BackendApiService:
         preferred_name: str = "",
         preferred_anime_name: str = "",
         preferred_download_directory_name: str = "",
+        preferred_episode_offset: int = 0,
         exclude_patterns: str | list[str] = "",
     ) -> dict[str, object]:
         return await self._application_service.preview_rss_subscription(
@@ -220,6 +227,7 @@ class BackendApiService:
             preferred_name=preferred_name,
             preferred_anime_name=preferred_anime_name,
             preferred_download_directory_name=preferred_download_directory_name,
+            preferred_episode_offset=preferred_episode_offset,
             exclude_patterns=normalize_exclude_patterns(exclude_patterns),
         )
 
@@ -392,6 +400,9 @@ class BackendApiService:
     ) -> tuple[bool, str, DownloadTaskResponse | None]:
         success, message, task = await self._application_service.retry_download(task_id)
         return success, message, _build_task_response(task) if task else None
+
+    def archive_failed_download(self, task_id: str) -> tuple[bool, str]:
+        return self._application_service.archive_failed_download(task_id)
 
     async def parse_rss(
         self,

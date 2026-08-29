@@ -63,6 +63,24 @@ def _release_label(release: AnimeRelease) -> str:
     )
 
 
+def _apply_episode_offset(result: ParseResult, offset: int) -> None:
+    """Convert an absolute RSS episode number to the season-local number."""
+    if (
+        offset <= 0
+        or not result.success
+        or result.result is None
+        or result.result.episode <= 0
+    ):
+        return
+    adjusted_episode = result.result.episode - offset
+    if adjusted_episode <= 0:
+        result.success = False
+        result.result = None
+        result.error = f"episode offset {offset} makes episode non-positive"
+        return
+    result.result.episode = adjusted_episode
+
+
 class RSSStage(PipelineStage[None]):
     _METADATA_CACHE_MAXSIZE = 8192
     _METADATA_CACHE_TTL = 60 * 60 * 24 * 7
@@ -369,6 +387,8 @@ class RSSStage(PipelineStage[None]):
 
         if missing:
             parsed = await self._metadata_parser.parse(missing)
+            for entry, result in zip(missing, parsed):
+                _apply_episode_offset(result, entry.episode_offset)
             validated = await self._metadata_validator.validate(parsed)
             for entry, result in zip(missing, validated):
                 key = self._metadata_cache_key(entry)
@@ -380,7 +400,7 @@ class RSSStage(PipelineStage[None]):
 
     @staticmethod
     def _metadata_cache_key(entry: AnimeRelease) -> str:
-        return entry.download_url or entry.title
+        return f"{entry.download_url or entry.title}|episode_offset={entry.episode_offset}"
 
     @staticmethod
     def _apply_metadata(entry: AnimeRelease, result: ParseResult) -> bool:

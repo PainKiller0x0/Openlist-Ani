@@ -30,6 +30,7 @@ class AnimeRelease:
     source_url: str | None = None
     anime_name_override: str | None = None
     download_directory_name_override: str | None = None
+    episode_offset: int = 0
     anime_name: str | None = None
     season: int | None = None
     episode: int | None = None

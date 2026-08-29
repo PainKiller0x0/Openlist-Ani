@@ -345,6 +345,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         name=str(metadata.get("name", "") or request.name).strip(),
         anime_name=(request.anime_name.strip() or request.name.strip()),
         download_directory_name=request.download_directory_name.strip(),
+        episode_offset=request.episode_offset,
         tmdb_id=metadata.get("tmdb_id"),
         poster_url=str(metadata.get("poster_url", "") or ""),
         season=request.season or 1,
@@ -367,6 +368,7 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         "name": metadata.get("name", "") or request.name.strip(),
         "anime_name": request.anime_name.strip() or request.name.strip(),
         "download_directory_name": request.download_directory_name.strip(),
+        "episode_offset": request.episode_offset,
         "tmdb_id": metadata.get("tmdb_id"),
         "poster_url": metadata.get("poster_url", ""),
         "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
@@ -383,6 +385,7 @@ async def ui_preview_rss(request: RSSPreviewRequest) -> dict:
         preferred_name=request.name,
         preferred_anime_name=request.anime_name,
         preferred_download_directory_name=request.download_directory_name,
+        preferred_episode_offset=request.episode_offset,
         exclude_patterns=request.exclude_patterns,
     )
     if not preview.get("success"):
@@ -440,6 +443,7 @@ async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
         name=request.name,
         anime_name=request.anime_name or request.name,
         download_directory_name=request.download_directory_name,
+        episode_offset=request.episode_offset,
         tmdb_id=request.tmdb_id,
         season=request.season,
         poster_url=request.poster_url,
@@ -597,6 +601,17 @@ async def ui_retry_download(task_id: str) -> dict[str, object]:
         "message": message,
         "task": task.model_dump(mode="json") if task else None,
     }
+
+
+@router.post("/ui/downloads/{task_id}/archive")
+async def ui_archive_failed_download(task_id: str) -> dict[str, object]:
+    """Hide one failed task while keeping its durable history."""
+    svc = BackendApiService.get()
+    success, message = svc.archive_failed_download(task_id)
+    if not success:
+        status_code = 404 if message == "Task not found" else 409
+        raise HTTPException(status_code=status_code, detail=message)
+    return {"success": True, "message": message}
 
 
 @router.post("/parse_rss")

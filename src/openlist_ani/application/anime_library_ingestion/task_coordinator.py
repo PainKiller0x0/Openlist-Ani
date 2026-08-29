@@ -167,6 +167,7 @@ class TaskCoordinator:
             task.retry.last_error = None
             task.started_at = None
             task.completed_at = None
+            task.archived = False
             task.touch()
             self.save(task)
             return task, None
@@ -181,6 +182,7 @@ class TaskCoordinator:
     def is_downloading(self, release: AnimeRelease) -> bool:
         return any(
             task.release.download_url == release.download_url
+            and not task.archived
             and task.state not in {DownloadState.COMPLETED, DownloadState.CANCELLED}
             and (task.state != DownloadState.FAILED or release.source_url is not None)
             for task in self.list_tasks()

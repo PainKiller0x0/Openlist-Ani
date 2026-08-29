@@ -25,6 +25,7 @@ class ReleaseFeedReader:
         global_exclusion_patterns: list[str] | None = None,
         anime_names: dict[str, str] | None = None,
         download_directory_names: dict[str, str] | None = None,
+        episode_offsets: dict[str, int] | None = None,
     ) -> None:
         self._urls = list(dict.fromkeys(urls))
         self._factory = factory or FeedSourceFactory()
@@ -32,6 +33,10 @@ class ReleaseFeedReader:
         self._global_exclusion_patterns = list(global_exclusion_patterns or [])
         self._anime_names = dict(anime_names or {})
         self._download_directory_names = dict(download_directory_names or {})
+        self._episode_offsets = {
+            url: max(0, int(offset))
+            for url, offset in (episode_offsets or {}).items()
+        }
 
     def set_urls(self, urls: list[str]) -> None:
         """Replace monitored URLs without restarting the backend process."""
@@ -63,6 +68,14 @@ class ReleaseFeedReader:
             url: name.strip()
             for url, name in names_by_url.items()
             if name and name.strip()
+        }
+
+    def set_episode_offsets(self, offsets_by_url: dict[str, int]) -> None:
+        """Replace per-subscription episode-number corrections."""
+        self._episode_offsets = {
+            url: max(0, int(offset))
+            for url, offset in offsets_by_url.items()
+            if int(offset) > 0
         }
 
     async def fetch_new_releases(self) -> list[AnimeRelease]:
@@ -137,6 +150,7 @@ class ReleaseFeedReader:
                 entry.source_url = url
                 entry.anime_name_override = self._anime_names.get(url)
                 entry.download_directory_name_override = self._download_directory_names.get(url)
+                entry.episode_offset = self._episode_offsets.get(url, 0)
                 new_entries.append(entry)
         return new_entries
 

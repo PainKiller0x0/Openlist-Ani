@@ -136,6 +136,7 @@ class AnimeLibraryApplicationService:
         name: str = "",
         anime_name: str = "",
         download_directory_name: str = "",
+        episode_offset: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -151,6 +152,7 @@ class AnimeLibraryApplicationService:
                 name=name,
                 anime_name=anime_name,
                 download_directory_name=download_directory_name,
+                episode_offset=episode_offset,
                 tmdb_id=tmdb_id,
                 poster_url=poster_url,
                 season=season,
@@ -171,12 +173,27 @@ class AnimeLibraryApplicationService:
             str(item.get("anime_name", "") or item.get("name", ""))
             for item in raw_subscriptions
         ]
+        seasons_by_name = {
+            str(item.get("anime_name", "") or item.get("name", "")): (
+                int(item["season"])
+                if item.get("season") is not None
+                else None
+            )
+            for item in raw_subscriptions
+        }
         find_latest = getattr(
             self._anime_library_repository, "find_latest_episodes", None
         )
-        latest_episodes = (
-            await find_latest(anime_names) if find_latest is not None else {}
-        )
+        latest_episodes = {}
+        if find_latest is not None:
+            try:
+                latest_episodes = await find_latest(
+                    anime_names,
+                    seasons_by_name=seasons_by_name,
+                )
+            except TypeError:
+                # Keep older repository adapters and test doubles working.
+                latest_episodes = await find_latest(anime_names)
         subscriptions: list[dict[str, Any]] = []
         for item in raw_subscriptions:
             enriched = dict(item)
@@ -314,6 +331,7 @@ class AnimeLibraryApplicationService:
         name: str | None = None,
         anime_name: str | None = None,
         download_directory_name: str | None = None,
+        episode_offset: int | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -325,6 +343,7 @@ class AnimeLibraryApplicationService:
             name=name,
             anime_name=anime_name,
             download_directory_name=download_directory_name,
+            episode_offset=episode_offset,
             enabled=enabled,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
@@ -360,6 +379,7 @@ class AnimeLibraryApplicationService:
         name: str = "",
         anime_name: str = "",
         download_directory_name: str = "",
+        episode_offset: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -388,6 +408,7 @@ class AnimeLibraryApplicationService:
                 name=name,
                 anime_name=anime_name,
                 download_directory_name=download_directory_name,
+                episode_offset=episode_offset,
                 tmdb_id=tmdb_id,
                 poster_url=effective_poster_url,
                 season=season,
@@ -404,6 +425,7 @@ class AnimeLibraryApplicationService:
             name=name,
             anime_name=anime_name,
             download_directory_name=download_directory_name,
+            episode_offset=episode_offset,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -521,6 +543,13 @@ class AnimeLibraryApplicationService:
                 for item in self._get_rss_subscriptions()
                 if item.get("enabled", True) and item.get("url")
             })
+        set_episode_offsets = getattr(feed_reader, "set_episode_offsets", None)
+        if set_episode_offsets is not None:
+            set_episode_offsets({
+                str(item.get("url", "")): int(item.get("episode_offset", 0) or 0)
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True) and item.get("url")
+            })
 
     async def create_download(
         self,
@@ -549,6 +578,7 @@ class AnimeLibraryApplicationService:
         return [
             task
             for task in self._pipeline.task_coordinator.list_tasks()
+            if not task.archived
             if task.state
             not in {
                 DownloadState.COMPLETED,
@@ -566,6 +596,18 @@ class AnimeLibraryApplicationService:
         if task is None:
             return False, error or "Unable to retry task", None
         return True, f"已重新加入下载队列：{task.release.title}", task
+
+    def archive_failed_download(self, task_id: str) -> tuple[bool, str]:
+        task = self.get_download(task_id)
+        if task is None:
+            return False, "Task not found"
+        if task.state != DownloadState.FAILED:
+            return False, "Only failed tasks can be archived"
+
+        task.archived = True
+        task.touch()
+        self._pipeline.task_coordinator.save(task)
+        return True, "失败任务已存档"
 
     async def scan_rss_now(self) -> dict[str, object]:
         return await self._pipeline.scan_rss_now()
@@ -608,6 +650,7 @@ class AnimeLibraryApplicationService:
         preferred_name: str = "",
         preferred_anime_name: str = "",
         preferred_download_directory_name: str = "",
+        preferred_episode_offset: int = 0,
         exclude_patterns: list[str] | None = None,
         entry_limit: int = 80,
     ) -> dict[str, Any]:
@@ -618,6 +661,7 @@ class AnimeLibraryApplicationService:
 
         global_patterns = self.get_global_exclude_patterns()
         local_patterns = normalize_exclude_patterns(exclude_patterns)
+        episode_offset = max(0, int(preferred_episode_offset or 0))
         combined_patterns = list(dict.fromkeys(global_patterns + local_patterns))
         accepted, excluded = filter_releases_by_title(
             parsed.entries or [], combined_patterns
@@ -629,12 +673,29 @@ class AnimeLibraryApplicationService:
         preview_limit = min(entry_limit, 24)
         preview_candidates = (accepted or (parsed.entries or []))[:preview_limit]
         validated_preview = await self._parse_preview_metadata(preview_candidates)
+        invalid_offset_titles = [
+            result.release_title or "未命名条目"
+            for result in validated_preview
+            if result.success
+            and result.result is not None
+            and episode_offset > 0
+            and result.result.episode <= episode_offset
+        ]
+        if invalid_offset_titles:
+            return {
+                "success": False,
+                "message": (
+                    f"集数扣除值 {episode_offset} 过大，条目“{invalid_offset_titles[0]}”"
+                    "扣除后集数必须大于 0"
+                ),
+            }
         metadata = await self.resolve_rss_subscription(
             url,
             preferred_name,
             entries=preview_candidates,
             validated_results=validated_preview,
         )
+        self._normalize_preview_seasons(validated_preview, metadata)
 
         validated_by_title = {
             result.release_title: result
@@ -664,7 +725,8 @@ class AnimeLibraryApplicationService:
                         preferred_download_directory_name.strip() or None
                     ),
                     season=result.season,
-                    episode=result.episode,
+                    episode=result.episode - episode_offset,
+                    episode_offset=episode_offset,
                     fansub=result.fansub,
                     quality=result.quality,
                     languages=result.languages,
@@ -702,6 +764,7 @@ class AnimeLibraryApplicationService:
             "name": metadata.get("name", "") or preferred_name.strip(),
             "anime_name": preferred_anime_name.strip(),
             "download_directory_name": preferred_download_directory_name.strip(),
+            "episode_offset": episode_offset,
             "tmdb_id": metadata.get("tmdb_id"),
             "poster_url": metadata.get("poster_url", ""),
             "download_path": self._settings.download_path,
@@ -714,6 +777,40 @@ class AnimeLibraryApplicationService:
             "entries": [entry_payload(release) for release in ordered[:entry_limit]],
             "truncated": len(ordered) > entry_limit,
         }
+
+    @staticmethod
+    def _normalize_preview_seasons(
+        results: list[ParseResult], metadata: dict[str, Any]
+    ) -> None:
+        """Correct an invalid LLM season when TMDB has one regular season."""
+        seasons = metadata.get("seasons")
+        if not isinstance(seasons, list):
+            return
+
+        regular_seasons = [
+            item
+            for item in seasons
+            if isinstance(item, dict)
+            and isinstance(item.get("season_number"), int)
+            and item["season_number"] > 0
+        ]
+        if len(regular_seasons) != 1:
+            return
+
+        only_season = regular_seasons[0]["season_number"]
+        episode_count = regular_seasons[0].get("episode_count")
+        for result in results:
+            if not result.success or result.result is None:
+                continue
+            if result.result.season == only_season:
+                continue
+            if (
+                isinstance(episode_count, int)
+                and episode_count > 0
+                and result.result.episode > episode_count
+            ):
+                continue
+            result.result.season = only_season
 
     async def _parse_preview_metadata(
         self, entries: list[AnimeRelease]

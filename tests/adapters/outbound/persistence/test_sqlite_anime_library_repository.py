@@ -124,6 +124,28 @@ async def test_repository_tracks_latest_episode_and_strict_rejections(tmp_path):
         "Test Anime": 3
     }
 
+
+async def test_repository_matches_latest_episode_by_normalized_series_name_and_season(
+    tmp_path,
+):
+    db_path = tmp_path / "data.db"
+    repository = SqliteAnimeLibraryRepository(db_path=db_path)
+    await repository.init()
+    await repository.add_release(
+        AnimeRelease(
+            title="Slime - 91",
+            download_url="magnet:?xt=urn:btih:slime-91",
+            anime_name="关于我转生变成史莱姆这档事 第四季 (2026)",
+            season=4,
+            episode=19,
+        )
+    )
+
+    assert await repository.find_latest_episodes(
+        ["关于我转生变成史莱姆这档事(2018)"],
+        seasons_by_name={"关于我转生变成史莱姆这档事(2018)": 4},
+    ) == {"关于我转生变成史莱姆这档事(2018)": 19}
+
     rejected = AnimeRelease(
         title="Test Anime - 03 duplicate",
         download_url="magnet:?xt=urn:btih:rejected",

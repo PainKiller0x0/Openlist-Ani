@@ -68,6 +68,12 @@ class RSSSubscription(BaseModel):
     name: str = ""
     anime_name: str = ""
     download_directory_name: str = ""
+    episode_offset: int = Field(
+        default=0,
+        ge=0,
+        le=999,
+        description="Subtract this value from parsed episode numbers for this RSS",
+    )
     enabled: bool = True
     tmdb_id: int | None = None
     poster_url: str = ""
@@ -408,6 +414,7 @@ class ConfigManager:
         name: str = "",
         anime_name: str = "",
         download_directory_name: str = "",
+        episode_offset: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -425,6 +432,7 @@ class ConfigManager:
                     name=name.strip(),
                     anime_name=anime_name.strip(),
                     download_directory_name=download_directory_name.strip(),
+                    episode_offset=episode_offset,
                     tmdb_id=tmdb_id,
                     poster_url=poster_url.strip(),
                     season=season or 1,
@@ -439,6 +447,7 @@ class ConfigManager:
                 existing.anime_name = anime_name.strip()
             if download_directory_name.strip():
                 existing.download_directory_name = download_directory_name.strip()
+            existing.episode_offset = episode_offset
             if tmdb_id is not None:
                 existing.tmdb_id = tmdb_id
             if poster_url.strip():
@@ -457,6 +466,7 @@ class ConfigManager:
         name: str | None = None,
         anime_name: str | None = None,
         download_directory_name: str | None = None,
+        episode_offset: int | None = None,
         enabled: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
@@ -475,6 +485,8 @@ class ConfigManager:
             item.anime_name = anime_name.strip()
         if download_directory_name is not None:
             item.download_directory_name = download_directory_name.strip()
+        if episode_offset is not None:
+            item.episode_offset = episode_offset
         if enabled is not None:
             item.enabled = enabled
         if tmdb_id is not None:

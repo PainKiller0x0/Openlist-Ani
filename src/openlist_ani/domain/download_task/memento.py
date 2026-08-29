@@ -41,6 +41,7 @@ class TaskMemento:
     started_at: str | None = None
     completed_at: str | None = None
     schema_version: int = SCHEMA_VERSION
+    archived: bool = False
 
     def touch(self) -> None:
         self.updated_at = datetime.now().isoformat()
@@ -75,6 +76,7 @@ class TaskMemento:
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),
             schema_version=data.get("schema_version", SCHEMA_VERSION),
+            archived=bool(data.get("archived", False)),
         )
 
 
@@ -85,6 +87,7 @@ def _release_to_dict(release: AnimeRelease) -> dict[str, Any]:
         "source_url": release.source_url,
         "anime_name_override": release.anime_name_override,
         "download_directory_name_override": release.download_directory_name_override,
+        "episode_offset": release.episode_offset,
         "anime_name": release.anime_name,
         "season": release.season,
         "episode": release.episode,
@@ -104,6 +107,7 @@ def _release_from_dict(data: dict[str, Any]) -> AnimeRelease:
         source_url=data.get("source_url"),
         anime_name_override=data.get("anime_name_override"),
         download_directory_name_override=data.get("download_directory_name_override"),
+        episode_offset=int(data.get("episode_offset") or 0),
         anime_name=data.get("anime_name"),
         season=data.get("season"),
         episode=data.get("episode"),

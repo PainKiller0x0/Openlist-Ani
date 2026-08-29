@@ -52,3 +52,22 @@ def test_memento_store_does_not_persist_completed_tasks(tmp_path):
     loaded = JsonTaskMementoStore(tmp_path / "task_mementos.json").load_all()
 
     assert loaded == []
+
+
+def test_memento_store_persists_archived_failed_task(tmp_path):
+    store = JsonTaskMementoStore(tmp_path / "task_mementos.json")
+    task = TaskMemento(
+        task_id="task-archived",
+        state=DownloadState.FAILED,
+        release=AnimeRelease(
+            title="[ANi] Test Anime - 01 [1080p]",
+            download_url="magnet:?xt=urn:btih:archived",
+        ),
+        base_path="/anime",
+        archived=True,
+    )
+
+    store.save(task)
+    loaded = JsonTaskMementoStore(tmp_path / "task_mementos.json").load_all()
+
+    assert loaded[0].archived is True

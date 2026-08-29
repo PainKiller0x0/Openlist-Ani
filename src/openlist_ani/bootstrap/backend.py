@@ -160,6 +160,11 @@ async def run() -> None:
                 for item in config.rss.subscriptions
                 if item.enabled and item.download_directory_name
             },
+            episode_offsets={
+                item.url: item.episode_offset
+                for item in config.rss.subscriptions
+                if item.enabled and item.episode_offset > 0
+            },
         ),
         notifier=notification_manager,
     )
@@ -412,6 +417,7 @@ async def _lookup_tmdb_show_by_id(client, tmdb_id: int) -> dict[str, object] | N
             details.get("first_air_date"),
         ),
         "first_air_date": details.get("first_air_date"),
+        "seasons": details.get("seasons") or [],
         "poster_url": (
             f"https://image.tmdb.org/t/p/w500{poster_path}" if poster_path else ""
         ),
