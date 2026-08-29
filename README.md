@@ -281,4 +281,4 @@ uv run black --check .
 
 | 追番预览 | 任务与识别 |
 | :---: | :---: |
-| <img src="imgs/show_pic1.png" width="420" /> | <img src="imgs/show_pic2.jpg" width="420" /> |
+| <img src="imgs/readme-following-preview.png" width="420" /> | <img src="imgs/readme-task-identification.jpg" width="420" /> |
