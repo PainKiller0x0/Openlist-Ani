@@ -13,6 +13,8 @@ class AddRSSRequest(BaseModel):
     anime_name: str = Field(default="", max_length=200, description="Optional download anime_name override")
     download_directory_name: str = Field(default="", max_length=200, description="Optional download directory name override")
     episode_offset: int = Field(default=0, ge=0, le=999, description="Subtract from parsed episode numbers for this RSS")
+    filename_season_override: int = Field(default=0, ge=0, le=99)
+    directory_season_override: int = Field(default=0, ge=0, le=99)
     tmdb_id: int | None = Field(default=None, description="Optional TMDB TV show id")
     season: int | None = Field(default=None, ge=0, le=99)
     exclude_patterns: str = Field(
@@ -34,6 +36,8 @@ class RSSPreviewRequest(BaseModel):
     anime_name: str = Field(default="", max_length=200, description="Optional download anime_name override")
     download_directory_name: str = Field(default="", max_length=200, description="Optional download directory name override")
     episode_offset: int = Field(default=0, ge=0, le=999, description="Subtract from parsed episode numbers for this RSS")
+    filename_season_override: int = Field(default=0, ge=0, le=99)
+    directory_season_override: int = Field(default=0, ge=0, le=99)
     exclude_patterns: str = Field(
         default="", max_length=2000, description="Pipe-separated title exclusions"
     )
@@ -54,6 +58,13 @@ class ToggleRSSRequest(BaseModel):
     enabled: bool = Field(..., description="Whether the subscription should keep polling")
 
 
+class SetRSSCompletedRequest(BaseModel):
+    """Request body for marking an RSS subscription completed or active again."""
+
+    url: str = Field(..., description="RSS feed URL")
+    completed: bool = Field(..., description="Whether the anime is completed")
+
+
 class CorrectRSSRequest(BaseModel):
     """Request body for correcting an existing RSS subscription."""
 
@@ -63,6 +74,8 @@ class CorrectRSSRequest(BaseModel):
     anime_name: str = Field(default="", max_length=200)
     download_directory_name: str = Field(default="", max_length=200)
     episode_offset: int = Field(default=0, ge=0, le=999)
+    filename_season_override: int = Field(default=0, ge=0, le=99)
+    directory_season_override: int = Field(default=0, ge=0, le=99)
     tmdb_id: int | None = Field(default=None)
     season: int | None = Field(default=None, ge=0, le=99)
     poster_url: str = Field(default="", max_length=1000)
@@ -115,7 +128,10 @@ class RSSSubscriptionResponse(BaseModel):
     anime_name: str = ""
     download_directory_name: str = ""
     episode_offset: int = 0
+    filename_season_override: int = 0
+    directory_season_override: int = 0
     enabled: bool = True
+    completed: bool = False
     tmdb_id: int | None = None
     poster_url: str = ""
 

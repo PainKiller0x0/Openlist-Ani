@@ -26,6 +26,9 @@ class ReleaseFeedReader:
         anime_names: dict[str, str] | None = None,
         download_directory_names: dict[str, str] | None = None,
         episode_offsets: dict[str, int] | None = None,
+        season_overrides: dict[str, int] | None = None,
+        filename_season_overrides: dict[str, int] | None = None,
+        directory_season_overrides: dict[str, int] | None = None,
     ) -> None:
         self._urls = list(dict.fromkeys(urls))
         self._factory = factory or FeedSourceFactory()
@@ -36,6 +39,21 @@ class ReleaseFeedReader:
         self._episode_offsets = {
             url: max(0, int(offset))
             for url, offset in (episode_offsets or {}).items()
+        }
+        self._season_overrides = {
+            url: int(season)
+            for url, season in (season_overrides or {}).items()
+            if int(season) > 0
+        }
+        self._filename_season_overrides = {
+            url: int(season)
+            for url, season in (filename_season_overrides or {}).items()
+            if int(season) > 0
+        }
+        self._directory_season_overrides = {
+            url: int(season)
+            for url, season in (directory_season_overrides or {}).items()
+            if int(season) > 0
         }
 
     def set_urls(self, urls: list[str]) -> None:
@@ -76,6 +94,32 @@ class ReleaseFeedReader:
             url: max(0, int(offset))
             for url, offset in offsets_by_url.items()
             if int(offset) > 0
+        }
+
+    def set_season_overrides(self, overrides_by_url: dict[str, int]) -> None:
+        """Apply the subscription season after subtracting absolute numbering."""
+        self._season_overrides = {
+            url: int(season)
+            for url, season in overrides_by_url.items()
+            if int(season) > 0
+        }
+
+    def set_filename_season_overrides(
+        self, overrides_by_url: dict[str, int]
+    ) -> None:
+        self._filename_season_overrides = {
+            url: int(season)
+            for url, season in overrides_by_url.items()
+            if int(season) > 0
+        }
+
+    def set_directory_season_overrides(
+        self, overrides_by_url: dict[str, int]
+    ) -> None:
+        self._directory_season_overrides = {
+            url: int(season)
+            for url, season in overrides_by_url.items()
+            if int(season) > 0
         }
 
     async def fetch_new_releases(self) -> list[AnimeRelease]:
@@ -151,6 +195,9 @@ class ReleaseFeedReader:
                 entry.anime_name_override = self._anime_names.get(url)
                 entry.download_directory_name_override = self._download_directory_names.get(url)
                 entry.episode_offset = self._episode_offsets.get(url, 0)
+                entry.season_override = self._season_overrides.get(url)
+                entry.filename_season_override = self._filename_season_overrides.get(url)
+                entry.directory_season_override = self._directory_season_overrides.get(url)
                 new_entries.append(entry)
         return new_entries
 

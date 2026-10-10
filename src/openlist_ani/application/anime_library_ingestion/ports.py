@@ -33,6 +33,10 @@ class MetadataParserPort(Protocol):
 
 
 class MetadataValidatorPort(Protocol):
+    async def validate_identity(
+        self, results: list[ParseResult]
+    ) -> list[ParseResult]: ...
+
     async def validate(self, results: list[ParseResult]) -> list[ParseResult]: ...
 
 
@@ -85,12 +89,6 @@ class AnimeLibraryRepositoryPort(Protocol):
         anime_names: list[str],
         seasons_by_name: dict[str, int | None] | None = None,
     ) -> dict[str, int]: ...
-
-    async def find_strict_rejected_urls(self, urls: list[str]) -> set[str]: ...
-
-    async def record_strict_rejections(
-        self, releases: list[AnimeRelease]
-    ) -> None: ...
 
     async def add_release(self, release: AnimeRelease) -> None: ...
 

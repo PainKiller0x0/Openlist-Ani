@@ -30,6 +30,7 @@ from .schema import (
     RestartResponse,
     GlobalRSSFilterRequest,
     RSSPreviewRequest,
+    SetRSSCompletedRequest,
     ToggleRSSRequest,
     UISettingsRequest,
     MikanGroupsRequest,
@@ -121,7 +122,7 @@ async def ui_state() -> dict:
         "rss_urls": [
             str(item["url"])
             for item in subscriptions
-            if item.get("enabled", True)
+            if item.get("enabled", True) and not item.get("completed", False)
         ],
         "rss_subscriptions": subscriptions,
         "global_exclude_patterns": svc.global_exclude_patterns(),
@@ -346,6 +347,8 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         anime_name=(request.anime_name.strip() or request.name.strip()),
         download_directory_name=request.download_directory_name.strip(),
         episode_offset=request.episode_offset,
+        filename_season_override=request.filename_season_override,
+        directory_season_override=request.directory_season_override,
         tmdb_id=metadata.get("tmdb_id"),
         poster_url=str(metadata.get("poster_url", "") or ""),
         season=request.season or 1,
@@ -369,6 +372,8 @@ async def ui_add_rss(request: AddRSSRequest) -> dict:
         "anime_name": request.anime_name.strip() or request.name.strip(),
         "download_directory_name": request.download_directory_name.strip(),
         "episode_offset": request.episode_offset,
+        "filename_season_override": request.filename_season_override,
+        "directory_season_override": request.directory_season_override,
         "tmdb_id": metadata.get("tmdb_id"),
         "poster_url": metadata.get("poster_url", ""),
         "exclude_patterns": normalize_exclude_patterns(request.exclude_patterns),
@@ -386,6 +391,8 @@ async def ui_preview_rss(request: RSSPreviewRequest) -> dict:
         preferred_anime_name=request.anime_name,
         preferred_download_directory_name=request.download_directory_name,
         preferred_episode_offset=request.episode_offset,
+        preferred_filename_season_override=request.filename_season_override,
+        preferred_directory_season_override=request.directory_season_override,
         exclude_patterns=request.exclude_patterns,
     )
     if not preview.get("success"):
@@ -409,6 +416,20 @@ async def ui_toggle_rss(request: ToggleRSSRequest) -> dict:
     svc = BackendApiService.get()
     success, message, urls = svc.update_rss_subscription(
         request.url, enabled=request.enabled
+    )
+    if not success:
+        raise HTTPException(status_code=404, detail=message)
+    return {"success": True, "message": message, "urls": urls}
+
+
+@router.post("/ui/rss/completed")
+async def ui_set_rss_completed(request: SetRSSCompletedRequest) -> dict:
+    """Mark an anime completed or resume its RSS tracking."""
+    svc = BackendApiService.get()
+    success, message, urls = svc.update_rss_subscription(
+        request.url,
+        enabled=True if not request.completed else None,
+        completed=request.completed,
     )
     if not success:
         raise HTTPException(status_code=404, detail=message)
@@ -444,6 +465,8 @@ async def ui_correct_rss(request: CorrectRSSRequest) -> dict:
         anime_name=request.anime_name or request.name,
         download_directory_name=request.download_directory_name,
         episode_offset=request.episode_offset,
+        filename_season_override=request.filename_season_override,
+        directory_season_override=request.directory_season_override,
         tmdb_id=request.tmdb_id,
         season=request.season,
         poster_url=request.poster_url,

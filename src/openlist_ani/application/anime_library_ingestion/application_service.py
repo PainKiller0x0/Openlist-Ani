@@ -137,6 +137,8 @@ class AnimeLibraryApplicationService:
         anime_name: str = "",
         download_directory_name: str = "",
         episode_offset: int = 0,
+        filename_season_override: int = 0,
+        directory_season_override: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -153,6 +155,8 @@ class AnimeLibraryApplicationService:
                 anime_name=anime_name,
                 download_directory_name=download_directory_name,
                 episode_offset=episode_offset,
+                filename_season_override=filename_season_override,
+                directory_season_override=directory_season_override,
                 tmdb_id=tmdb_id,
                 poster_url=poster_url,
                 season=season,
@@ -216,7 +220,11 @@ class AnimeLibraryApplicationService:
                     or "未命名订阅"
                 )
             )
-            season = int(enriched.get("season") or 1)
+            season = int(
+                enriched.get("directory_season_override")
+                or enriched.get("season")
+                or 1
+            )
             enriched["download_directory"] = (
                 f"{self._settings.download_path.rstrip('/')}/{directory_name}/Season {season}"
             )
@@ -265,12 +273,6 @@ class AnimeLibraryApplicationService:
                 tmdb = await self._lookup_tmdb_show_by_id(tmdb_id)
             except Exception as e:
                 logger.debug(f"TMDB id lookup failed for {tmdb_id}: {e}")
-        lookup_name = authoritative_name or inferred_name
-        if tmdb is None and self._lookup_tmdb_show and lookup_name:
-            try:
-                tmdb = await self._lookup_tmdb_show(lookup_name)
-            except Exception as e:
-                logger.debug(f"TMDB poster lookup failed for {lookup_name}: {e}")
         if tmdb:
             tmdb_id = tmdb.get("id") or tmdb_id
             poster_url = tmdb.get("poster_url") or ""
@@ -332,7 +334,10 @@ class AnimeLibraryApplicationService:
         anime_name: str | None = None,
         download_directory_name: str | None = None,
         episode_offset: int | None = None,
+        filename_season_override: int | None = None,
+        directory_season_override: int | None = None,
         enabled: bool | None = None,
+        completed: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
         season: int | None = None,
@@ -344,7 +349,10 @@ class AnimeLibraryApplicationService:
             anime_name=anime_name,
             download_directory_name=download_directory_name,
             episode_offset=episode_offset,
+            filename_season_override=filename_season_override,
+            directory_season_override=directory_season_override,
             enabled=enabled,
+            completed=completed,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -353,7 +361,14 @@ class AnimeLibraryApplicationService:
             return False, f"RSS URL not found: {url}", self._get_rss_urls()
         updated_urls = self._get_rss_urls()
         self._sync_feed_reader(updated_urls)
-        state = "resumed" if enabled else "paused" if enabled is False else "updated"
+        if completed is True:
+            state = "completed"
+        elif enabled is True or completed is False:
+            state = "resumed"
+        elif enabled is False:
+            state = "paused"
+        else:
+            state = "updated"
         cancelled = 0
         if enabled is False:
             item = next(
@@ -380,6 +395,8 @@ class AnimeLibraryApplicationService:
         anime_name: str = "",
         download_directory_name: str = "",
         episode_offset: int = 0,
+        filename_season_override: int = 0,
+        directory_season_override: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -409,6 +426,8 @@ class AnimeLibraryApplicationService:
                 anime_name=anime_name,
                 download_directory_name=download_directory_name,
                 episode_offset=episode_offset,
+                filename_season_override=filename_season_override,
+                directory_season_override=directory_season_override,
                 tmdb_id=tmdb_id,
                 poster_url=effective_poster_url,
                 season=season,
@@ -426,6 +445,8 @@ class AnimeLibraryApplicationService:
             anime_name=anime_name,
             download_directory_name=download_directory_name,
             episode_offset=episode_offset,
+            filename_season_override=filename_season_override,
+            directory_season_override=directory_season_override,
             tmdb_id=tmdb_id,
             poster_url=poster_url,
             season=season,
@@ -433,8 +454,13 @@ class AnimeLibraryApplicationService:
         )
         if not added:
             return False, message, self._get_rss_urls()
-        if not enabled:
-            self.update_rss_subscription(url, enabled=False)
+        completed = bool(original.get("completed", False))
+        if not enabled or completed:
+            self.update_rss_subscription(
+                url,
+                enabled=enabled,
+                completed=completed,
+            )
         if not self._remove_rss_url(original_url):
             # Do not leave a duplicate source behind if the old record could
             # not be removed after the replacement was persisted.
@@ -520,7 +546,9 @@ class AnimeLibraryApplicationService:
                     item.get("exclude_patterns", [])
                 )
                 for item in self._get_rss_subscriptions()
-                if item.get("enabled", True) and item.get("url")
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
             })
         set_global_patterns = getattr(feed_reader, "set_global_exclusion_patterns", None)
         if set_global_patterns is not None:
@@ -530,7 +558,9 @@ class AnimeLibraryApplicationService:
             set_anime_names({
                 str(item.get("url", "")): str(item.get("anime_name", ""))
                 for item in self._get_rss_subscriptions()
-                if item.get("enabled", True) and item.get("url")
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
             })
         set_download_directory_names = getattr(
             feed_reader, "set_download_directory_names", None
@@ -541,14 +571,57 @@ class AnimeLibraryApplicationService:
                     item.get("download_directory_name", "")
                 )
                 for item in self._get_rss_subscriptions()
-                if item.get("enabled", True) and item.get("url")
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
             })
         set_episode_offsets = getattr(feed_reader, "set_episode_offsets", None)
         if set_episode_offsets is not None:
             set_episode_offsets({
                 str(item.get("url", "")): int(item.get("episode_offset", 0) or 0)
                 for item in self._get_rss_subscriptions()
-                if item.get("enabled", True) and item.get("url")
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
+            })
+        set_season_overrides = getattr(feed_reader, "set_season_overrides", None)
+        if set_season_overrides is not None:
+            set_season_overrides({
+                str(item.get("url", "")): int(item.get("season", 0) or 0)
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
+                and int(item.get("episode_offset", 0) or 0) > 0
+                and int(item.get("season", 0) or 0) > 0
+            })
+        set_filename_season_overrides = getattr(
+            feed_reader, "set_filename_season_overrides", None
+        )
+        if set_filename_season_overrides is not None:
+            set_filename_season_overrides({
+                str(item.get("url", "")): int(
+                    item.get("filename_season_override", 0) or 0
+                )
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
+                and int(item.get("filename_season_override", 0) or 0) > 0
+            })
+        set_directory_season_overrides = getattr(
+            feed_reader, "set_directory_season_overrides", None
+        )
+        if set_directory_season_overrides is not None:
+            set_directory_season_overrides({
+                str(item.get("url", "")): int(
+                    item.get("directory_season_override", 0) or 0
+                )
+                for item in self._get_rss_subscriptions()
+                if item.get("enabled", True)
+                and not item.get("completed", False)
+                and item.get("url")
+                and int(item.get("directory_season_override", 0) or 0) > 0
             })
 
     async def create_download(
@@ -651,6 +724,8 @@ class AnimeLibraryApplicationService:
         preferred_anime_name: str = "",
         preferred_download_directory_name: str = "",
         preferred_episode_offset: int = 0,
+        preferred_filename_season_override: int = 0,
+        preferred_directory_season_override: int = 0,
         exclude_patterns: list[str] | None = None,
         entry_limit: int = 80,
     ) -> dict[str, Any]:
@@ -725,6 +800,12 @@ class AnimeLibraryApplicationService:
                         preferred_download_directory_name.strip() or None
                     ),
                     season=result.season,
+                    filename_season_override=(
+                        preferred_filename_season_override or None
+                    ),
+                    directory_season_override=(
+                        preferred_directory_season_override or None
+                    ),
                     episode=result.episode - episode_offset,
                     episode_offset=episode_offset,
                     fansub=result.fansub,
@@ -765,6 +846,8 @@ class AnimeLibraryApplicationService:
             "anime_name": preferred_anime_name.strip(),
             "download_directory_name": preferred_download_directory_name.strip(),
             "episode_offset": episode_offset,
+            "filename_season_override": preferred_filename_season_override,
+            "directory_season_override": preferred_directory_season_override,
             "tmdb_id": metadata.get("tmdb_id"),
             "poster_url": metadata.get("poster_url", ""),
             "download_path": self._settings.download_path,
@@ -815,59 +898,20 @@ class AnimeLibraryApplicationService:
     async def _parse_preview_metadata(
         self, entries: list[AnimeRelease]
     ) -> list[ParseResult]:
-        """Parse titles for the interactive preview without full TMDB checks.
-
-        Preview only needs the LLM-derived name, season, episode, and naming
-        fields.  Authoritative identity and episode validation still run in
-        the ingestion pipeline before a download task is created.
-        """
-        if not entries:
-            return []
-        try:
-            return await self._metadata_parser.parse(entries)
-        except Exception as error:
-            logger.debug(f"RSS metadata preview parsing failed: {error}")
-            return [
-                ParseResult(success=False, release_title=entry.title, error=str(error))
-                for entry in entries
-            ]
+        """Parse preview entries and verify their series identity with TMDB."""
+        return await self._parse_and_validate_metadata(entries)
 
     async def _parse_and_validate_metadata(
         self, entries: list[AnimeRelease]
     ) -> list[ParseResult]:
-        """Parse a preview batch, validating only when identity is missing.
-
-        The LLM title parser already returns a TMDB id for the normal case.
-        Re-running the full TMDB identity/episode pipeline for every preview
-        entry adds several network/LLM round trips without changing the
-        rename or directory preview.  Keep that pipeline as a correctness
-        fallback for parsers that cannot provide an id.
-        """
+        """Parse entries and resolve identity even when the parser supplied an ID."""
         if not entries:
             return []
         try:
             parsed = await self._metadata_parser.parse(entries)
-            missing_identity = [
-                result
-                for result in parsed
-                if result.success
-                and result.result is not None
-                and result.result.tmdb_id is None
-            ]
-            if not missing_identity:
-                return parsed
-            validated_missing = await self._metadata_validator.validate(missing_identity)
-            validated_by_title = {
-                result.release_title: result
-                for result in validated_missing
-                if result.release_title
-            }
-            return [
-                validated_by_title.get(result.release_title, result)
-                for result in parsed
-            ]
+            return await self._metadata_validator.validate_identity(parsed)
         except Exception as error:
-            logger.debug(f"RSS metadata preview failed: {error}")
+            logger.debug(f"RSS metadata identity validation failed: {error}")
             return [
                 ParseResult(success=False, release_title=entry.title, error=str(error))
                 for entry in entries

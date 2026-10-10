@@ -10,9 +10,14 @@ from openlist_ani.application.anime_library_ingestion.models import ParseResult
 class NullMetadataValidator:
     """Validation strategy that accepts parser output as-is."""
 
-    async def validate(self, results: list[ParseResult]) -> list[ParseResult]:
+    async def validate_identity(
+        self, results: list[ParseResult]
+    ) -> list[ParseResult]:
         await asyncio.sleep(0)
         return [result.model_copy(deep=True) for result in results]
+
+    async def validate(self, results: list[ParseResult]) -> list[ParseResult]:
+        return await self.validate_identity(results)
 
     async def close(self) -> None:
         await asyncio.sleep(0)

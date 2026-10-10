@@ -1,11 +1,11 @@
 import { api } from './api.js';
 import { escapeHtml, pageHeader, renderShell } from './components.js';
-import { renderTracking } from './pages/tracking.js?v=20260824-card-layout-3';
+import { renderTracking } from './pages/tracking.js?v=20260928-home-filter-memory-2';
 import { renderAdd, renderSelect } from './pages/add.js?v=20260829-openlist-state-1';
-import { renderPreview } from './pages/preview.js?v=20260829-openlist-state-1';
-import { renderDetails } from './pages/details.js';
+import { renderPreview } from './pages/preview.js?v=20261010-detailed-output-settings-1';
+import { renderDetails } from './pages/details.js?v=20261010-detailed-output-settings-1';
 import { renderDownloads } from './pages/downloads.js?v=20260829-mikan-failed-tasks-1';
-import { renderLogs } from './pages/logs.js?v=20260829-openlist-state-1';
+import { renderLogs } from './pages/logs.js?v=20261002-log-level-filter-1';
 import { renderSettings } from './pages/settings.js';
 
 const flow = {};

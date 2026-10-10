@@ -147,23 +147,41 @@ async def run() -> None:
             exclusion_patterns={
                 item.url: list(item.exclude_patterns)
                 for item in config.rss.subscriptions
-                if item.enabled
+                if item.enabled and not item.completed
             },
             global_exclusion_patterns=list(config.rss.filter.exclude_patterns),
             anime_names={
                 item.url: item.anime_name
                 for item in config.rss.subscriptions
-                if item.enabled and item.anime_name
+                if item.enabled and not item.completed and item.anime_name
             },
             download_directory_names={
                 item.url: item.download_directory_name
                 for item in config.rss.subscriptions
-                if item.enabled and item.download_directory_name
+                if item.enabled and not item.completed and item.download_directory_name
             },
             episode_offsets={
                 item.url: item.episode_offset
                 for item in config.rss.subscriptions
-                if item.enabled and item.episode_offset > 0
+                if item.enabled and not item.completed and item.episode_offset > 0
+            },
+            season_overrides={
+                item.url: item.season
+                for item in config.rss.subscriptions
+                if item.enabled and not item.completed
+                and item.episode_offset > 0 and item.season > 0
+            },
+            filename_season_overrides={
+                item.url: item.filename_season_override
+                for item in config.rss.subscriptions
+                if item.enabled and not item.completed
+                and item.filename_season_override > 0
+            },
+            directory_season_overrides={
+                item.url: item.directory_season_override
+                for item in config.rss.subscriptions
+                if item.enabled and not item.completed
+                and item.directory_season_override > 0
             },
         ),
         notifier=notification_manager,

@@ -63,8 +63,10 @@ def _release_label(release: AnimeRelease) -> str:
     )
 
 
-def _apply_episode_offset(result: ParseResult, offset: int) -> None:
-    """Convert an absolute RSS episode number to the season-local number."""
+def _apply_episode_offset(
+    result: ParseResult, offset: int, season_override: int | None = None
+) -> None:
+    """Convert absolute numbering to the configured season-local episode."""
     if (
         offset <= 0
         or not result.success
@@ -79,6 +81,8 @@ def _apply_episode_offset(result: ParseResult, offset: int) -> None:
         result.error = f"episode offset {offset} makes episode non-positive"
         return
     result.result.episode = adjusted_episode
+    if season_override is not None and season_override > 0:
+        result.result.season = season_override
 
 
 class RSSStage(PipelineStage[None]):
@@ -337,23 +341,12 @@ class RSSStage(PipelineStage[None]):
         downloaded_titles = await self._anime_library_repository.find_existing_titles(
             downloadable_titles
         )
-        strict_rejected_urls: set[str] = set()
-        if self._settings.strict_filtering:
-            find_rejected = getattr(
-                self._anime_library_repository, "find_strict_rejected_urls", None
-            )
-            if find_rejected is not None:
-                strict_rejected_urls = await find_rejected(
-                    [entry.download_url for entry in entries if entry.download_url]
-                )
         for entry in entries:
             reason: str | None = None
             if not entry.download_url:
                 reason = "missing_url"
             elif entry.title in downloaded_titles:
                 reason = "already_downloaded"
-            elif entry.download_url in strict_rejected_urls:
-                reason = "strict_rejected"
 
             if reason is None:
                 accepted.append(entry)
@@ -388,7 +381,9 @@ class RSSStage(PipelineStage[None]):
         if missing:
             parsed = await self._metadata_parser.parse(missing)
             for entry, result in zip(missing, parsed):
-                _apply_episode_offset(result, entry.episode_offset)
+                _apply_episode_offset(
+                    result, entry.episode_offset, entry.season_override
+                )
             validated = await self._metadata_validator.validate(parsed)
             for entry, result in zip(missing, validated):
                 key = self._metadata_cache_key(entry)
@@ -400,7 +395,10 @@ class RSSStage(PipelineStage[None]):
 
     @staticmethod
     def _metadata_cache_key(entry: AnimeRelease) -> str:
-        return f"{entry.download_url or entry.title}|episode_offset={entry.episode_offset}"
+        return (
+            f"{entry.download_url or entry.title}|episode_offset={entry.episode_offset}"
+            f"|season_override={entry.season_override or 0}"
+        )
 
     @staticmethod
     def _apply_metadata(entry: AnimeRelease, result: ParseResult) -> bool:

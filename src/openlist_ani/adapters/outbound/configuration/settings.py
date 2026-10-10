@@ -74,7 +74,10 @@ class RSSSubscription(BaseModel):
         le=999,
         description="Subtract this value from parsed episode numbers for this RSS",
     )
+    filename_season_override: int = Field(default=0, ge=0, le=99)
+    directory_season_override: int = Field(default=0, ge=0, le=99)
     enabled: bool = True
+    completed: bool = False
     tmdb_id: int | None = None
     poster_url: str = ""
     season: int = Field(default=1, ge=0, le=99)
@@ -114,7 +117,9 @@ class RSSConfig(BaseModel):
                 by_url[url] = RSSSubscription(url=url)
 
         self.subscriptions = list(by_url.values())
-        self.urls = [item.url for item in self.subscriptions if item.enabled]
+        self.urls = [
+            item.url for item in self.subscriptions if item.enabled and not item.completed
+        ]
         return self
 
 
@@ -415,6 +420,8 @@ class ConfigManager:
         anime_name: str = "",
         download_directory_name: str = "",
         episode_offset: int = 0,
+        filename_season_override: int = 0,
+        directory_season_override: int = 0,
         tmdb_id: int | None = None,
         poster_url: str = "",
         season: int | None = None,
@@ -433,6 +440,8 @@ class ConfigManager:
                     anime_name=anime_name.strip(),
                     download_directory_name=download_directory_name.strip(),
                     episode_offset=episode_offset,
+                    filename_season_override=filename_season_override,
+                    directory_season_override=directory_season_override,
                     tmdb_id=tmdb_id,
                     poster_url=poster_url.strip(),
                     season=season or 1,
@@ -441,6 +450,7 @@ class ConfigManager:
             )
         else:
             existing.enabled = True
+            existing.completed = False
             if name.strip():
                 existing.name = name.strip()
             if anime_name.strip():
@@ -448,6 +458,8 @@ class ConfigManager:
             if download_directory_name.strip():
                 existing.download_directory_name = download_directory_name.strip()
             existing.episode_offset = episode_offset
+            existing.filename_season_override = filename_season_override
+            existing.directory_season_override = directory_season_override
             if tmdb_id is not None:
                 existing.tmdb_id = tmdb_id
             if poster_url.strip():
@@ -467,7 +479,10 @@ class ConfigManager:
         anime_name: str | None = None,
         download_directory_name: str | None = None,
         episode_offset: int | None = None,
+        filename_season_override: int | None = None,
+        directory_season_override: int | None = None,
         enabled: bool | None = None,
+        completed: bool | None = None,
         tmdb_id: int | None = None,
         poster_url: str | None = None,
         season: int | None = None,
@@ -487,8 +502,16 @@ class ConfigManager:
             item.download_directory_name = download_directory_name.strip()
         if episode_offset is not None:
             item.episode_offset = episode_offset
+        if filename_season_override is not None:
+            item.filename_season_override = filename_season_override
+        if directory_season_override is not None:
+            item.directory_season_override = directory_season_override
         if enabled is not None:
             item.enabled = enabled
+            if enabled:
+                item.completed = False
+        if completed is not None:
+            item.completed = completed
         if tmdb_id is not None:
             item.tmdb_id = tmdb_id
         if poster_url is not None:
@@ -584,7 +607,9 @@ class ConfigManager:
 
     def _sync_active_rss_urls(self) -> None:
         self._config.rss.urls = [
-            item.url for item in self._config.rss.subscriptions if item.enabled
+            item.url
+            for item in self._config.rss.subscriptions
+            if item.enabled and not item.completed
         ]
 
     def _remove_placeholder_rss(self, *, save: bool) -> bool:
@@ -597,7 +622,7 @@ class ConfigManager:
         self._config.rss.urls = [
             item.url
             for item in self._config.rss.subscriptions
-            if item.enabled
+            if item.enabled and not item.completed
         ]
         changed = len(self._config.rss.subscriptions) != before
         if changed and save:

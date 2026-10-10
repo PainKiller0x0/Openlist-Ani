@@ -136,6 +136,9 @@ class ReleaseFilenamePlanner:
     def stem(self, release: AnimeRelease, include_version: bool = True) -> str:
         rename_context = vars(release).copy()
         rename_context.pop("title", None)
+        rename_context["season"] = (
+            release.filename_season_override or release_season(release)
+        )
         return format_release_stem(
             self._rename_format,
             include_version=include_version,
@@ -152,7 +155,8 @@ class ReleaseDirectoryPlanner:
     """Build target library directories for downloaded releases."""
 
     def target_directory_path(self, base_path: str, release: AnimeRelease) -> str:
-        season_dir = f"Season {release_season(release)}"
+        season_dir = release.directory_season_override or release_season(release)
+        season_dir = f"Season {season_dir}"
         directory_name = (
             release.download_directory_name_override
             or release.anime_name

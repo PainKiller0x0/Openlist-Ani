@@ -33,11 +33,14 @@ class AnimeRelease:
     episode_offset: int = 0
     anime_name: str | None = None
     season: int | None = None
+    filename_season_override: int | None = None
+    directory_season_override: int | None = None
     episode: int | None = None
     fansub: str | None = None
     quality: VideoQuality | None = VideoQuality.UNKNOWN
     languages: list[LanguageType] = field(default_factory=list)
     version: int = 1
+    season_override: int | None = None
 
     def __repr__(self) -> str:
         season_str = f"S{self.season:02d}" if self.season is not None else "S??"

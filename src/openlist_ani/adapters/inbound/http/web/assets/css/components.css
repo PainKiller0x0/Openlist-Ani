@@ -37,3 +37,10 @@ button:disabled { opacity: .55; cursor: wait; transform: none; }
 .toast.success { border-left-color: var(--good); }
 .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .75s linear infinite; vertical-align: -2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+.advanced-settings { margin: 0 0 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.advanced-settings summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 15px; color: var(--text); cursor: pointer; list-style: none; }
+.advanced-settings summary::-webkit-details-marker { display: none; }
+.advanced-settings summary::after { content: '+'; color: var(--blue); font-size: 20px; }
+.advanced-settings[open] summary::after { content: '−'; }
+.advanced-settings summary span { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+.advanced-settings > .form-grid { padding: 0 15px 15px; }

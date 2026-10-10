@@ -32,6 +32,12 @@ class _EpisodeValidationCache:
 class MetadataValidator(Protocol):
     """Validation strategy for parsed release metadata."""
 
+    async def validate_identity(
+        self, results: list[ParseResult]
+    ) -> list[ParseResult]:
+        """Resolve and correct series identity without checking episodes."""
+        ...
+
     async def validate(self, results: list[ParseResult]) -> list[ParseResult]:
         """Return validated and corrected release metadata."""
         ...
@@ -64,22 +70,55 @@ class MetadataValidationPipeline:
     async def close(self) -> None:
         await self._identity_resolver.close()
 
-    async def validate(self, results: list[ParseResult]) -> list[ParseResult]:
+    async def validate_identity(
+        self, results: list[ParseResult]
+    ) -> list[ParseResult]:
+        """Replace parser-provided IDs with TMDB-resolved identities."""
         validated_results = [item.model_copy(deep=True) for item in results]
         successful_items = [
             item for item in validated_results if item.success and item.result
         ]
-        if successful_items:
-            names = {
-                item.result.anime_name.strip()
-                for item in successful_items
-                if item.result and item.result.anime_name.strip()
-            }
-            resolved_map = await self._resolve_identities(names)
-            episode_cache = _EpisodeValidationCache()
+        if not successful_items:
+            return validated_results
 
-            for item in successful_items:
-                await self._validate_item(item, resolved_map, episode_cache)
+        names = {
+            item.result.anime_name.strip()
+            for item in successful_items
+            if item.result and item.result.anime_name.strip()
+        }
+        resolved_map = await self._resolve_identities(names)
+        for item in successful_items:
+            parse_result = item.result
+            if parse_result is None:
+                continue
+            identity = resolved_map.get(parse_result.anime_name.strip())
+            if identity is None:
+                logger.debug(
+                    f"Authoritative metadata unresolved for parsed anime '{parse_result.anime_name.strip()}'"
+                )
+                self._corrector.fail_identity(item)
+                continue
+            self._corrector.apply_identity(item, identity)
+
+        return validated_results
+
+    async def validate(self, results: list[ParseResult]) -> list[ParseResult]:
+        validated_results = await self.validate_identity(results)
+        successful_items = [
+            item for item in validated_results if item.success and item.result
+        ]
+        episode_cache = _EpisodeValidationCache()
+        for item in successful_items:
+            parse_result = item.result
+            if parse_result is None:
+                continue
+            mapping = await self._validate_episode(item, episode_cache)
+            if mapping is None:
+                self._corrector.fail_episode(
+                    item, season=parse_result.season, episode=parse_result.episode
+                )
+                continue
+            self._corrector.apply_episode_mapping(item, mapping)
 
         return validated_results
 
@@ -90,37 +129,6 @@ class MetadataValidationPipeline:
 
         pairs = await asyncio.gather(*(resolve_one(name) for name in names))
         return {name: match for name, match in pairs if match is not None}
-
-    async def _validate_item(
-        self,
-        item: ParseResult,
-        resolved_map: dict[str, TMDBMatch],
-        episode_cache: _EpisodeValidationCache,
-    ) -> None:
-        parse_result = item.result
-        if parse_result is None:
-            return
-
-        original_name = parse_result.anime_name.strip()
-        identity = resolved_map.get(original_name)
-        if identity is None:
-            logger.debug(
-                f"Authoritative metadata unresolved for parsed anime '{original_name}'"
-            )
-            self._corrector.fail_identity(item)
-            return
-
-        self._corrector.apply_identity(item, identity)
-        mapping = await self._validate_episode(item, episode_cache)
-        if mapping is None:
-            self._corrector.fail_episode(
-                item,
-                season=parse_result.season,
-                episode=parse_result.episode,
-            )
-            return
-
-        self._corrector.apply_episode_mapping(item, mapping)
 
     async def _validate_episode(
         self,
