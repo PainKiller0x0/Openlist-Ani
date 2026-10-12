@@ -99,7 +99,7 @@ fn memento_payload_unknown_fields_round_trip_and_terminal_save_deletes() {
     };
 
     store.save(&row).unwrap();
-    assert_eq!(store.load_all().unwrap(), vec![row]);
+    assert_eq!(store.load_all().unwrap(), vec![row.clone()]);
 
     let failed = LegacyMementoRecord {
         task_id: "task-failed".into(),
@@ -108,7 +108,26 @@ fn memento_payload_unknown_fields_round_trip_and_terminal_save_deletes() {
         payload_json: r#"{"schema_version":1,"state":"failed","future_field":true}"#.into(),
     };
     store.save(&failed).unwrap();
-    assert_eq!(store.load_all().unwrap().len(), 2);
+    let unknown_state = LegacyMementoRecord {
+        task_id: "task-future".into(),
+        state: "future_state".into(),
+        updated_at: "2026-10-12T10:00:02".into(),
+        payload_json: r#"{"schema_version":2,"state":"future_state","new_checkpoint":7}"#.into(),
+    };
+    store.save(&unknown_state).unwrap();
+    assert_eq!(
+        store.load_all().unwrap(),
+        vec![row.clone(), failed.clone(), unknown_state.clone()]
+    );
+
+    let invalid = LegacyMementoRecord {
+        task_id: "invalid".into(),
+        state: "pending".into(),
+        updated_at: "2026-10-12T10:00:03".into(),
+        payload_json: "[]".into(),
+    };
+    assert!(store.save(&invalid).is_err());
+    assert_eq!(store.load_all().unwrap().len(), 3);
 
     let terminal = LegacyMementoRecord {
         task_id: "task-1".into(),
@@ -117,7 +136,7 @@ fn memento_payload_unknown_fields_round_trip_and_terminal_save_deletes() {
         payload_json: r#"{"schema_version":1,"state":"completed"}"#.into(),
     };
     store.save(&terminal).unwrap();
-    assert_eq!(store.load_all().unwrap(), vec![failed]);
+    assert_eq!(store.load_all().unwrap(), vec![failed, unknown_state]);
 }
 
 #[test]

@@ -4,7 +4,7 @@ use std::{
 };
 
 use rusqlite::{Connection, OpenFlags, params};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use thiserror::Error;
 
 const DATA_SCHEMA: &[(&str, &[&str])] = &[
@@ -196,7 +196,7 @@ impl LegacyTaskMementoStore {
         if matches!(record.state.as_str(), "completed" | "cancelled") {
             return self.delete(&record.task_id);
         }
-        let _: Value = serde_json::from_str(&record.payload_json)?;
+        let _: Map<String, Value> = serde_json::from_str(&record.payload_json)?;
         let connection = open_writable_database(&self.path, TASK_SCHEMA)?;
         connection.execute(
             "INSERT INTO task_mementos (task_id, state, updated_at, payload)
