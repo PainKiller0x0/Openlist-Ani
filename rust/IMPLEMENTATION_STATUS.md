@@ -4,7 +4,7 @@ This status records executable Rust behavior only. A copied acceptance case or a
 
 | Work area | Status | Evidence |
 | --- | --- | --- |
-| A. Compatibility foundation | Partial | Config loopback validation and health/readiness integration tests |
+| A. Compatibility foundation | Partial | Config loopback validation, health/readiness, and legacy auth contract tests |
 | B. Data and pure rules | Partial | Read-only legacy schema checks; 14 naming golden cases |
 | C. External adapters | Not started | No adapter tests |
 | D. Download state machine and recovery | Not started | No workflow implementation |

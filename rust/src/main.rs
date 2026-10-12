@@ -1,6 +1,6 @@
-use std::{error::Error, path::PathBuf};
+use std::{error::Error, net::SocketAddr, path::PathBuf};
 
-use openlist_ani_rs::{AppConfig, AppState, router};
+use openlist_ani_rs::{AppConfig, AppState, AuthSettings, router};
 use tokio::net::TcpListener;
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
@@ -10,14 +10,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("config.toml"));
     let config = AppConfig::load(config_path)?;
+    let auth = AuthSettings::from_env()?;
     let listener = TcpListener::bind(config.bind).await?;
+    let app = router(AppState::new(config.data_db, config.task_mementos_db).with_auth(auth))
+        .into_make_service_with_connect_info::<SocketAddr>();
 
-    axum::serve(
-        listener,
-        router(AppState::new(config.data_db, config.task_mementos_db)),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
     Ok(())
 }
 
