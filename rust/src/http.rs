@@ -14,13 +14,14 @@ use axum::{
     extract::{ConnectInfo, Path, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
 use fancy_regex::Regex;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::json;
+use tower_http::services::ServeDir;
 
 use crate::{
     auth::AuthSettings,
@@ -50,6 +51,7 @@ pub struct AppState {
     databases: Arc<LegacyDbPaths>,
     auth: Option<Arc<AuthSettings>>,
     config: Option<Arc<ConfigDocumentStore>>,
+    web_root: PathBuf,
     download_workers: Arc<Mutex<HashSet<String>>>,
     rss_scan_lock: Arc<tokio::sync::Mutex<()>>,
     rss_scan_running: Arc<AtomicBool>,
@@ -64,6 +66,9 @@ impl AppState {
             }),
             auth: None,
             config: None,
+            web_root: std::env::var_os("OPENLIST_ANI_WEB_ROOT")
+                .map(PathBuf::from)
+                .unwrap_or_else(default_web_root),
             download_workers: Arc::new(Mutex::new(HashSet::new())),
             rss_scan_lock: Arc::new(tokio::sync::Mutex::new(())),
             rss_scan_running: Arc::new(AtomicBool::new(false)),
@@ -77,6 +82,11 @@ impl AppState {
 
     pub fn with_config_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.config = Some(Arc::new(ConfigDocumentStore::new(path)));
+        self
+    }
+
+    pub fn with_web_root(mut self, path: impl Into<PathBuf>) -> Self {
+        self.web_root = path.into();
         self
     }
 
@@ -155,6 +165,9 @@ struct StatusResponse {
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .route("/", get(ui_index))
+        .route("/login", get(ui_login_page))
+        .nest_service("/assets", ServeDir::new(state.web_root.join("assets")))
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
         .route("/api/auth/session", get(auth_session))
@@ -183,6 +196,36 @@ pub fn router(state: AppState) -> Router {
         .route("/api/resolve_torrent", post(resolve_torrent_endpoint))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth_gate))
+}
+
+fn default_web_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/openlist_ani/adapters/inbound/http/web")
+}
+
+async fn ui_index(State(state): State<AppState>) -> Response {
+    serve_html_page(&state.web_root.join("index.html"), true)
+}
+
+async fn ui_login_page(State(state): State<AppState>) -> Response {
+    serve_html_page(&state.web_root.join("login.html"), false)
+}
+
+fn serve_html_page(path: &std::path::Path, index: bool) -> Response {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(_) => return api_error(StatusCode::NOT_FOUND, "web page not found"),
+    };
+    let mut response = Html(content).into_response();
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+    );
+    if index {
+        headers.insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
+        headers.insert(header::EXPIRES, HeaderValue::from_static("0"));
+    }
+    response
 }
 
 #[derive(Deserialize)]
@@ -278,8 +321,13 @@ async fn auth_gate(State(state): State<AppState>, request: Request, next: Next) 
     let path = request.uri().path();
     let public = matches!(
         path,
-        "/healthz" | "/readyz" | "/api/auth/login" | "/api/auth/logout" | "/api/auth/session"
-    );
+        "/healthz"
+            | "/readyz"
+            | "/login"
+            | "/api/auth/login"
+            | "/api/auth/logout"
+            | "/api/auth/session"
+    ) || path.starts_with("/assets/");
     if public || state.auth.is_none() {
         return next.run(request).await;
     }
