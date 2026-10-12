@@ -183,3 +183,7 @@ button, input, select, textarea { font-family: inherit; }
   .section-heading-title .card-size-switch { grid-column: 1 / -1; justify-self: start; }
   .section-heading-title .subscription-filter { width: 100%; min-width: 0; }
 }
+.detail-output-preview { grid-column: 1 / -1; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+.detail-output-preview-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.detail-output-results { margin-top: 12px; }
+@media (max-width: 680px) { .detail-output-preview-head { align-items: flex-start; flex-direction: column; } }

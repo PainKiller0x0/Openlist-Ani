@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - rust
+      - python
   push:
     branches:
       - "**"
@@ -20,7 +21,7 @@ concurrency:
 jobs:
   lint:
     name: CI / Lint
-    if: github.ref_name != 'rust' && github.base_ref != 'rust'
+    if: github.ref_name == 'python' || github.base_ref == 'python'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -46,7 +47,7 @@ jobs:
 
   test:
     name: CI / Test
-    if: github.ref_name != 'rust' && github.base_ref != 'rust'
+    if: github.ref_name == 'python' || github.base_ref == 'python'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -66,6 +67,7 @@ jobs:
 
   rust:
     name: Rust / Format, Test, Lint
+    if: github.ref_name == 'master' || github.ref_name == 'rust' || github.base_ref == 'master' || github.base_ref == 'rust'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -100,7 +102,7 @@ jobs:
 
   build:
     name: CI / Build
-    if: github.ref_name != 'rust' && github.base_ref != 'rust'
+    if: github.ref_name == 'python' || github.base_ref == 'python'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

@@ -1,284 +1,73 @@
-<p align="center">
-  <img src="imgs/logo.png" alt="OpenList-Ani Logo" width="360" />
-</p>
+# OpenList-Ani
 
-<h1 align="center">OpenList-Ani · op-ani</h1>
+OpenList-Ani（op-ani）是一个面向个人媒体库的 RSS 追番与下载任务管理工具。它负责发现新资源、识别番剧与集数、预览命名和目录，并把确认后的下载任务交给 OpenList。
 
-<p align="center">
-  <b>从找番、识别、过滤，到网盘下载和规范命名的一站式追番工具</b>
-</p>
+**当前默认分支 `master` 是 Rust 实现。** 原有 Python 版本保留在 [`python` 分支](https://github.com/PainKiller0x0/Openlist-Ani/tree/python)，作为历史实现和兼容参考。
 
-<p align="center">
-  本仓库是基于上游 OpenList-Ani 的个人整合版，重点服务于 OpenList + 迅雷/夸克等网盘 + SmartStrm + Jellyfin 的媒体库工作流。
-</p>
-
----
-
-## 这是什么
-
-op-ani 负责“发现资源”和“创建下载任务”，不负责保存媒体文件，也不是播放器。
-
-它从 Mikan 或其他 RSS 获取更新，识别番剧信息，按规则过滤资源，经用户确认后交给 OpenList 离线下载，再按 Emby/Jellyfin 友好的格式整理名称和目录。
+## 工作流程
 
 ```text
 Mikan / RSS
     ↓
-op-ani：识别、TMDB 校验、LLM 改名、过滤、预览
+op-ani：解析、识别、过滤、预览最终文件名和目录
     ↓
-OpenList：创建离线下载任务并保存到目标网盘
+OpenList：创建离线下载任务
     ↓
-SmartStrm：把网盘文件生成 STRM
+SmartStrm（可选）：生成 STRM 并触发媒体库刷新
     ↓
-Jellyfin / VidHub / 其他客户端播放
+Jellyfin / VidHub 等客户端
 ```
 
-SmartStrm、Jellyfin 和播放器都不是 op-ani 的硬依赖。只使用 OpenList 下载时，op-ani 也可以单独运行。
+OpenList 是下载和网盘存储入口；SmartStrm、Jellyfin 和播放器不是运行 op-ani 的硬依赖。
 
-## 我们这版做了什么
+## 当前能力
 
-### 网页端追番入口
+- Rust/Axum 后端、登录会话、RSS 追踪页面、设置、日志和下载任务管理。
+- Mikan 搜索作品、字幕组并构建 RSS；也可以直接添加 RSS。
+- 预览 RSS 识别结果、排除规则、文件名和完整下载目录，再决定是否开始追踪。
+- 通过 TMDB 校验作品身份和季集信息；支持配置 OpenAI/Anthropic 兼容服务辅助识别。
+- 独立设置文件名标题、文件名季号、归档季目录和集数偏移，适配特殊作品命名。
+- 向 OpenList 提交下载任务，持久化任务进度，支持受控重试和失败任务归档。
+- 下载完成后按规则重命名、移动；可选通知 SmartStrm。
+- 兼容现有 TOML 配置和 SQLite 业务表；Rust 下载流程另用持久化状态表记录任务，不重建旧表或搬动既有数据。
 
-- 在首页通过 Mikan 搜索番剧、选择字幕组，并生成对应 RSS。
-- 粘贴 RSS 后先进入独立的“识别与下载预览”弹窗。
-- 预览 TMDB 结果、年份、季度、TMDB ID、海报、改名结果和完整下载目录。
-- 确认后才保存订阅，并立即触发一次新订阅扫描。
+## 仓库结构
 
-### RSS 过滤与订阅管理
+- `rust/`：当前 Rust 服务、测试、部署脚本和迁移文档。
+- `src/openlist_ani/adapters/inbound/http/web/`：Rust 服务使用的网页资源。Rust 从文件系统读取该目录；离开源码目录部署时使用 `OPENLIST_ANI_WEB_ROOT` 指向它。
+- `python` 分支：原 Python 版本，保留原有 README 和代码历史。
+- `rust/docs/IMPLEMENTATION_STATUS.md`：已实现能力和仍未迁移的功能。
+- `rust/docs/API_CONTRACT.md`：HTTP/API 行为和兼容性说明。
+- `rust/docs/DEPLOYMENT_RUNBOOK.md`：隔离验证、部署、验收和回滚流程。
+- `rust/docs/LIVE_RELEASE.md`：已完成的线上切换记录和验证证据。
 
-- 全局排除规则对所有 RSS 生效。
-- 单个 RSS 可以设置独立排除规则，多个规则支持用 `|` 分隔。
-- 预览会展示总条目数、排除数量和确认后会下载的条目。
-- 支持立即扫描、暂停/恢复、修正 RSS 和删除订阅。
-- 已添加订阅会显示当前状态、最近扫描、下一次扫描、最新处理到第几集和完整下载目录。
+## 本地开发与测试
 
-### LLM + TMDB 媒体识别
+需要 Rust 1.85。所有 Rust 命令从 `rust/` 目录执行：
 
-- LLM 从资源标题中提取番剧名、季度、集数、字幕组、画质和语言。
-- TMDB 用于确认具体作品、年份和 TMDB ID。
-- 支持在确认前修改 `anime_name` 和下载目录名，处理敏感名称或自定义媒体库命名。
-- 默认命名格式为 `番剧名 - S01E01`，也可以在设置中调整。
-
-### 下载与任务可靠性
-
-- 支持 RSS 磁力/种子任务和网页上传 `.torrent`。
-- 下载前会应用过滤、清晰度优先级、字幕组优先级和已下载去重。
-- 任务有最大重试次数，失败后会明确标记，不会无限重试。
-- 严格去重命中的 RSS 条目会写入本地拒绝缓存，后续轮询直接跳过，避免同一失败条目反复重试。
-- 运行日志在网页端可查看，便于定位 OpenList 或网盘侧失败。
-
-### 数据与升级
-
-- SQLite 数据库会在启动时自动创建缺失的数据表，包括订阅进度查询和严格拒绝缓存，不需要手动改库。
-- 源码升级不会覆盖 `config.toml`、登录凭据、数据库和运行日志；部署时只需替换源码目录并重启服务。
-
-### 可选能力
-
-- Telegram、微信 iLink、飞书/Lark、PushPlus 通知。
-- Telegram、微信 iLink、飞书/Lark 智能助理。
-- Mikan 站点地址可在设置中修改，默认使用 `https://mikanani.kas.pub/`。
-- 可选通知本机 `op-ops` relay，在 OpenList 下载完成后立即触发 SmartStrm 扫描。
-- `deploy/xunlei-token-bridge/` 提供 OpenList 与 SmartStrm 迅雷令牌同步桥，适用于两者共用轮换令牌的部署。
-
-## 最快上手
-
-### 准备工作
-
-1. 部署 OpenList，并确认离线下载功能和目标网盘可用。
-2. 准备 OpenList 地址和管理令牌。
-3. 准备 Mikan RSS，或直接使用网页端的 Mikan 搜索入口。
-4. 推荐准备 OpenAI 兼容的 LLM API Key 和 TMDB API Key。
-
-没有 LLM 时，op-ani 会退回到正则解析，再使用 TMDB 做校验；复杂或格式不统一的资源建议启用 LLM。
-
-### 源码安装
-
-```bash
-git clone https://github.com/PainKiller0x0/Openlist-Ani.git
-cd Openlist-Ani
-
-uv sync --no-dev --frozen
-cp config.toml.example config.toml
-uv run openlist-ani
+```sh
+cd rust
+cargo +1.85 fmt --all -- --check
+cargo +1.85 test --locked
+cargo +1.85 clippy --locked --all-targets -- -D warnings
+cargo +1.85 build --locked --release
 ```
 
-启动后访问配置中的 `backend.host:backend.port`，默认是：
+这些命令验证 Rust 代码，不会启动真实下载或连接生产网盘。运行服务需要有效的配置文件、兼容的 SQLite 数据库，以及通过环境变量提供的认证信息。请使用隔离的测试配置和数据库；不要把生产凭据或数据库提交到仓库。
 
-```text
-http://127.0.0.1:26666
-```
+完整的服务启动、配置和生产操作要求见 [`rust/README.md`](rust/README.md) 与部署手册。生产服务应只绑定本机回环地址，并通过受控反向代理访问。
 
-如果要从其他设备访问，需要把 `backend.host` 改为 `0.0.0.0`，并通过反向代理或防火墙限制访问范围。
+## 迁移边界
 
-### 最小配置
+Rust 版本已承接主要追番、RSS、识别和下载流程，但**不宣称与 Python 旧版的全部功能完全等价**。例如，磁力链接的 DHT 元数据解析、Mikan 账号登录/订阅、聊天机器人和助手集成，以及部分旧接口仍有迁移缺口。完整清单和当前验证状态见 [`实现状态`](rust/IMPLEMENTATION_STATUS.md)。
 
-```toml
-[backend]
-host = "127.0.0.1"
-port = 26666
+## 安全说明
 
-[rss]
-interval_time = 300
+- 不要提交 `config.toml`、认证环境文件、API Key、机器人令牌、生产数据库、日志或上传的种子文件。
+- 使用 `config.toml.example` 作为配置结构参考；上线配置应放在仓库之外并限制文件权限。
+- 不要把服务直接暴露到公网；通过回环绑定、反向代理和访问控制提供网页入口。
+- 部署、重启或回滚生产服务前，请遵循部署手册并保留可验证的回滚点。
 
-[openlist]
-url = "http://127.0.0.1:5244"
-token = "你的 OpenList 令牌"
-download_path = "/迅雷/videos/番"
-offline_download_tool = "Thunder"
-rename_format = "{anime_name} - S{season:02d}E{episode:02d}"
+## 许可证与上游
 
-[metadata_parser]
-provider = "llm"
-
-[metadata_validator]
-provider = "tmdb"
-
-[llm]
-openai_api_key = "你的 LLM API Key"
-openai_base_url = "https://api.openai.com/v1"
-openai_model = "你的模型名"
-tmdb_language = "zh-CN"
-
-[mikan]
-base_url = "https://mikanani.kas.pub/"
-
-[smartstrm]
-enabled = false
-trigger_url = "http://127.0.0.1:18098/trigger"
-timeout_seconds = 2.0
-```
-
-完整配置请参考 [`config.toml.example`](config.toml.example) 和 [`docs/配置说明.md`](docs/配置说明.md)。不要把真实 API Key、OpenList 令牌或机器人令牌提交到 Git 仓库。
-
-## 网页端使用流程
-
-### 方式一：从 Mikan 搜索
-
-1. 在首页输入番剧名。
-2. 选择正确的番剧和字幕组。
-3. op-ani 自动生成 RSS 并进入预览。
-4. 确认 TMDB、年份、季度、改名结果和下载目录。
-5. 点击确认，保存订阅并立即开始追踪。
-
-### 方式二：直接添加 RSS
-
-1. 在首页粘贴 RSS 地址。
-2. 点击“识别并预览”。
-3. 在弹窗中设置全局/单订阅排除规则、`anime_name` 和下载目录名。
-4. 检查过滤后的资源列表和最终下载路径。
-5. 确认后保存；之后由轮询器自动处理新条目。
-
-### 方式三：上传种子
-
-在首页选择 `.torrent` 文件，可选填写任务名称和目标目录。op-ani 会解析种子内容，并复用现有 OpenList 离线下载流程。
-
-## 配置建议
-
-### 轮询间隔
-
-`rss.interval_time` 单位是秒，默认 300 秒，即 5 分钟。网页设置中的修改会立即作用于新的轮询周期。
-
-### 资源优先级
-
-可以通过 `rss.priority` 设置字幕组、画质和语言的比较顺序。同一番剧同一集出现多个版本时，优先级过滤器会尽量只保留更合适的一份。
-
-### 命名格式
-
-可用字段包括：
-
-```text
-anime_name、season、episode、fansub、quality、languages、version
-```
-
-常用示例：
-
-```text
-{anime_name} - S{season:02d}E{episode:02d}
-{anime_name} S{season:02d}E{episode:02d} {fansub} {quality} {languages}
-```
-
-### OpenList 地址切换
-
-网页设置会先验证 OpenList 地址、令牌、离线下载工具和目标目录。任一项验证失败，本次修改不会保存。
-
-已有任务保留创建时的下载目录；修改默认目录只影响之后新建的任务。
-
-## SmartStrm / Jellyfin 联动
-
-op-ani 下载完成后，OpenList 中会出现真实媒体文件。SmartStrm 再扫描对应目录，生成指向网盘直链解析服务的 STRM 文件，Jellyfin 负责媒体库索引和播放入口。
-
-推荐把 op-ani 的下载根目录直接设置为 SmartStrm 正在扫描的网盘目录，例如：
-
-```text
-/迅雷/videos/番
-```
-
-如果 OpenList 和 SmartStrm 共用迅雷账号令牌，建议安装令牌同步桥：
-
-```text
-deploy/xunlei-token-bridge/
-```
-
-它只负责令牌轮换后的同步，不负责转存、刮削或播放。迅雷主动撤销授权或要求验证码时，仍需人工重新授权一次。
-
-如果同时部署了 `op-ops` 的 `smartstrm-trigger`，将配置中的 `[smartstrm].enabled`
-设为 `true`，并填写本机 relay 地址。下载完成后会即时通知 SmartStrm，定时扫描仍然保留作为兜底。
-
-对外提供网页时，应用支持站内登录。通过服务的环境文件配置
-`OP_ANI_AUTH_USER`、`OP_ANI_AUTH_PASSWORD_HASH` 和 `OP_ANI_AUTH_SECRET`；不要把真实密码、
-哈希或签名密钥提交到 Git。
-
-## 部署方式
-
-- **源码/uv**：适合开发、调试和修改本项目。
-- **Docker/Podman**：适合 VPS 或 NAS 长期运行，配置和 `data/` 目录需要持久化。
-- **systemd**：适合 Linux 主机上的后台自启动。
-
-详细说明：
-
-- [`docs/快速开始.md`](docs/快速开始.md)
-- [`docs/Docker部署指南.md`](docs/Docker部署指南.md)
-- [`docs/PIP安装指南.md`](docs/PIP安装指南.md)
-- [`docs/源码编译指南.md`](docs/源码编译指南.md)
-- [`docs/配置说明.md`](docs/配置说明.md)
-- [`docs/追番入口.md`](docs/追番入口.md)
-- [`deploy/xunlei-token-bridge/README.md`](deploy/xunlei-token-bridge/README.md)
-
-## 数据与安全
-
-- `data/` 保存任务状态、媒体库识别结果、运行日志和上传种子。
-- `config.toml` 可能包含 OpenList 令牌、LLM Key、通知机器人令牌，不应提交到 Git。
-- 上传的种子保存在 `data/uploads/`，确认任务完成后可以按需清理。
-- 对外提供网页访问时，建议使用 HTTPS、反向代理和访问控制，不要直接暴露带有管理能力的后端端口。
-
-## 开发与测试
-
-安装开发依赖：
-
-```bash
-uv sync
-```
-
-运行测试：
-
-```bash
-uv run pytest
-```
-
-代码格式和静态检查：
-
-```bash
-uv run ruff check .
-uv run black --check .
-```
-
-## 项目关系
-
-本仓库基于上游 [TwooSix/Openlist-Ani](https://github.com/TwooSix/Openlist-Ani) 继续维护，并保留原项目的基础架构和许可证信息。
-
-本版本的重点是把 Mikan 搜索、RSS 预览、LLM/TMDB 识别、可控命名、OpenList 下载和迅雷令牌联动整合成一条可以长期运行的追番工作流。
-
-## 截图
-
-| 追番预览 | 任务与识别 |
-| :---: | :---: |
-| <img src="imgs/readme-following-preview.png" width="420" /> | <img src="imgs/readme-task-identification.jpg" width="420" /> |
+本项目基于 OpenList-Ani 相关上游代码持续维护。请查看仓库中的许可证文件及 [`python` 分支](https://github.com/PainKiller0x0/Openlist-Ani/tree/python)中的原始项目说明，了解代码来源与适用条款。
