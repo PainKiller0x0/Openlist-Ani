@@ -20,6 +20,14 @@ pub struct OfflineTask {
     pub progress: Option<Value>,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct OpenListFile {
+    pub name: String,
+    #[serde(default)]
+    pub is_dir: bool,
+    pub size: Option<u64>,
+}
+
 #[derive(Debug, Error)]
 pub enum OpenListError {
     #[error("OpenList 地址必须是带 http:// 或 https:// 的完整地址")]
@@ -219,6 +227,41 @@ impl OpenListClient {
             .post_json("/api/fs/remove", &json!({"dir": directory, "names": names}))
             .await?;
         Ok(response.get("code").and_then(Value::as_i64) == Some(200))
+    }
+
+    pub async fn rename_file(&self, path: &str, name: &str) -> Result<bool, OpenListError> {
+        let response = self
+            .post_json("/api/fs/rename", &json!({"path": path, "name": name}))
+            .await?;
+        Ok(response.get("code").and_then(Value::as_i64) == Some(200))
+    }
+
+    pub async fn list_files(&self, path: &str) -> Result<Vec<OpenListFile>, OpenListError> {
+        let response = self
+            .post_json(
+                "/api/fs/list",
+                &json!({
+                    "path": path,
+                    "password": "",
+                    "page": 1,
+                    "per_page": 0,
+                    "refresh": true
+                }),
+            )
+            .await?;
+        if response.get("code").and_then(Value::as_i64) != Some(200) {
+            return Err(OpenListError::Rejected);
+        }
+        let files = response
+            .pointer("/data/content")
+            .and_then(Value::as_array)
+            .ok_or(OpenListError::InvalidResponse)?;
+        files
+            .iter()
+            .cloned()
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| OpenListError::InvalidResponse)
     }
 
     async fn get_task_list(&self, path: &str) -> Result<Vec<OfflineTask>, OpenListError> {

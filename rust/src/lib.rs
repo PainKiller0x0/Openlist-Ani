@@ -3,6 +3,7 @@
 pub mod auth;
 pub mod config;
 pub mod config_store;
+pub mod download_workflow;
 pub mod http;
 pub mod naming;
 pub mod openlist;
