@@ -18,6 +18,7 @@ use crate::{
     config_store::{ConfigDocumentStore, ConfigStoreError, UiSettingsUpdate},
     naming::validate_rename_format,
     openlist::OpenListClient,
+    rss::{ParseRssResponse, RssError, parse_rss as fetch_parse_rss},
     storage::{LegacyDbPaths, LegacyResourceStore, LegacyTaskMementoStore, check_legacy_databases},
 };
 
@@ -74,6 +75,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/state", get(ui_state))
         .route("/api/downloads", get(list_downloads))
         .route("/api/downloads/{task_id}", get(get_download))
+        .route("/api/parse_rss", post(parse_rss_endpoint))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth_gate))
 }
@@ -481,6 +483,35 @@ async fn get_download(State(state): State<AppState>, Path(task_id): Path<String>
             StatusCode::INTERNAL_SERVER_ERROR,
             "could not read download tasks",
         ),
+    }
+}
+
+#[derive(Deserialize)]
+struct ParseRssRequest {
+    url: String,
+    limit: Option<i64>,
+}
+
+async fn parse_rss_endpoint(Json(request): Json<ParseRssRequest>) -> Json<ParseRssResponse> {
+    if request.url.trim().is_empty() {
+        return Json(ParseRssResponse::failure("'url' is required."));
+    }
+    match fetch_parse_rss(&request.url, request.limit).await {
+        Ok(response) => Json(response),
+        Err(error) => Json(ParseRssResponse::failure(rss_error_message(error))),
+    }
+}
+
+fn rss_error_message(error: RssError) -> String {
+    match error {
+        RssError::InvalidUrl => {
+            "Cannot pick feed source: RSS URL must be a complete HTTP(S) URL".to_string()
+        }
+        RssError::Request(_) => "Failed to fetch RSS: upstream request failed".to_string(),
+        RssError::TooLarge => "Failed to fetch RSS: response exceeds the 10 MiB limit".to_string(),
+        RssError::InvalidEncoding | RssError::InvalidXml => {
+            "Failed to fetch RSS: response is not valid RSS/Atom XML".to_string()
+        }
     }
 }
 
