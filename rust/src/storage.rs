@@ -686,6 +686,57 @@ impl LegacyTaskMementoStore {
         Ok(changed == 1)
     }
 
+    pub fn mark_submission_completed(
+        &self,
+        task_id: &str,
+        updated_at: &str,
+    ) -> Result<bool, LegacyStorageError> {
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction()?;
+        ensure_submission_schema(&transaction)?;
+        let changed = transaction.execute(
+            "UPDATE rust_download_operations SET state = 'completed', last_error = NULL, updated_at = ?2 \
+             WHERE task_id = ?1 AND state = 'submitted'",
+            params![task_id, updated_at],
+        )?;
+        let completed = changed == 1
+            || transaction
+                .query_row(
+                    "SELECT state FROM rust_download_operations WHERE task_id = ?1",
+                    params![task_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+                .as_deref()
+                == Some("completed");
+        if completed {
+            transaction.execute(
+                "DELETE FROM task_mementos WHERE task_id = ?1",
+                params![task_id],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(completed)
+    }
+
+    pub fn mark_submission_failed(
+        &self,
+        task_id: &str,
+        error: &str,
+        updated_at: &str,
+    ) -> Result<bool, LegacyStorageError> {
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction()?;
+        ensure_submission_schema(&transaction)?;
+        let changed = transaction.execute(
+            "UPDATE rust_download_operations SET state = 'failed', last_error = ?2, updated_at = ?3 \
+             WHERE task_id = ?1 AND state IN ('sending', 'submitted')",
+            params![task_id, error, updated_at],
+        )?;
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
     pub fn recover_interrupted_submissions(&self) -> Result<usize, LegacyStorageError> {
         let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
         let transaction = connection.transaction()?;

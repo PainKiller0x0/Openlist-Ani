@@ -1,4 +1,5 @@
 use crate::openlist::{OpenListClient, OpenListError};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 const VIDEO_EXTENSIONS: &[&str] = &[
@@ -33,6 +34,14 @@ pub struct MaterializedFile {
     pub cleanup_succeeded: bool,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct MaterializationPlan {
+    pub source_directory: String,
+    pub original_filename: String,
+    pub final_filename: String,
+    pub target_directory: String,
+}
+
 pub async fn detect_video_file(
     client: &OpenListClient,
     directory: &str,
@@ -49,8 +58,33 @@ pub async fn materialize_video_file(
     temporary_root: &str,
     target_directory: &str,
     relative_filename: &str,
+    desired_filename: &str,
 ) -> Result<MaterializedFile, DownloadWorkflowError> {
+    let plan = prepare_materialization(
+        client,
+        download_root,
+        temporary_root,
+        target_directory,
+        relative_filename,
+        desired_filename,
+    )
+    .await?;
+    execute_materialization(client, temporary_root, &plan).await
+}
+
+pub async fn prepare_materialization(
+    client: &OpenListClient,
+    download_root: &str,
+    temporary_root: &str,
+    target_directory: &str,
+    relative_filename: &str,
+    desired_filename: &str,
+) -> Result<MaterializationPlan, DownloadWorkflowError> {
     let relative_parts = safe_relative_parts(relative_filename)?;
+    let desired_parts = safe_relative_parts(desired_filename)?;
+    if desired_parts.len() != 1 {
+        return Err(DownloadWorkflowError::UnsafePath);
+    }
     let root = normalize_absolute(download_root)?;
     let temporary_root = normalize_absolute(temporary_root)?;
     let target = normalize_absolute(target_directory)?;
@@ -68,6 +102,7 @@ pub async fn materialize_video_file(
     }
 
     let filename = relative_parts.last().expect("validated non-empty path");
+    let desired_filename = &desired_parts[0];
     let parent = relative_parts[..relative_parts.len() - 1]
         .iter()
         .fold(temporary_root.clone(), |path, part| join_path(&path, part));
@@ -81,34 +116,93 @@ pub async fn materialize_video_file(
         .iter()
         .map(|file| file.name.as_str())
         .collect::<std::collections::HashSet<_>>();
-    let mut final_name = filename.clone();
+    let mut final_name = desired_filename.clone();
     if existing_names.contains(final_name.as_str()) {
-        final_name = next_available_name(filename, &existing_names)?;
-        let source_path = join_path(&parent, filename);
-        if !client.rename_file(&source_path, &final_name).await? {
-            let refreshed = client.list_files(&parent).await?;
-            if !refreshed.iter().any(|file| file.name == final_name) {
+        final_name = next_available_name(desired_filename, &existing_names)?;
+    }
+    Ok(MaterializationPlan {
+        source_directory: parent,
+        original_filename: filename.clone(),
+        final_filename: final_name,
+        target_directory: target,
+    })
+}
+
+pub async fn execute_materialization(
+    client: &OpenListClient,
+    temporary_root: &str,
+    plan: &MaterializationPlan,
+) -> Result<MaterializedFile, DownloadWorkflowError> {
+    let source_files = client.list_files(&plan.source_directory).await?;
+    let destination_files = client.list_files(&plan.target_directory).await?;
+    let source_has_final = source_files
+        .iter()
+        .any(|file| !file.is_dir && file.name == plan.final_filename);
+    let source_has_original = source_files
+        .iter()
+        .any(|file| !file.is_dir && file.name == plan.original_filename);
+    let already_moved = destination_files
+        .iter()
+        .any(|file| !file.is_dir && file.name == plan.final_filename);
+
+    if !source_has_final && !source_has_original && already_moved {
+        return Ok(MaterializedFile {
+            path: join_path(&plan.target_directory, &plan.final_filename),
+            cleanup_succeeded: cleanup_task_directory(client, temporary_root).await,
+        });
+    }
+    if !source_has_final && !source_has_original {
+        return Err(DownloadWorkflowError::VideoNotFound);
+    }
+
+    if !source_has_final && plan.original_filename != plan.final_filename {
+        let source_path = join_path(&plan.source_directory, &plan.original_filename);
+        let renamed = client.rename_file(&source_path, &plan.final_filename).await;
+        let refreshed = client.list_files(&plan.source_directory).await?;
+        if !refreshed
+            .iter()
+            .any(|file| !file.is_dir && file.name == plan.final_filename)
+        {
+            if renamed.is_err() {
                 return Err(DownloadWorkflowError::ResolveConflict);
             }
+            return Err(DownloadWorkflowError::ResolveConflict);
         }
     }
 
-    if !client
-        .move_files(&parent, &target, std::slice::from_ref(&final_name))
-        .await?
-    {
-        let source_files = client.list_files(&parent).await?;
-        let destination_files = client.list_files(&target).await?;
-        if source_files.iter().any(|file| file.name == final_name)
-            || !destination_files.iter().any(|file| file.name == final_name)
+    let moved = client
+        .move_files(
+            &plan.source_directory,
+            &plan.target_directory,
+            std::slice::from_ref(&plan.final_filename),
+        )
+        .await;
+    if !matches!(moved, Ok(true)) {
+        let source_files = client.list_files(&plan.source_directory).await?;
+        let destination_files = client.list_files(&plan.target_directory).await?;
+        if source_files
+            .iter()
+            .any(|file| !file.is_dir && file.name == plan.final_filename)
+            || !destination_files
+                .iter()
+                .any(|file| !file.is_dir && file.name == plan.final_filename)
         {
             return Err(DownloadWorkflowError::MoveFile);
         }
     }
 
+    if !client
+        .list_files(&plan.target_directory)
+        .await?
+        .iter()
+        .any(|file| !file.is_dir && file.name == plan.final_filename)
+    {
+        return Err(DownloadWorkflowError::MoveFile);
+    }
+
     Ok(MaterializedFile {
-        path: join_path(&target, &final_name),
-        cleanup_succeeded: cleanup_task_directory(client, &temporary_root).await,
+        path: join_path(&plan.target_directory, &plan.final_filename),
+        cleanup_succeeded: cleanup_task_directory(client, temporary_root).await,
     })
 }
 
@@ -346,7 +440,14 @@ mod tests {
                                     }
                                 }
                                 "/media/anime/Series/Season 1" => {
-                                    json!([{"name":"episode.mkv", "is_dir":false, "size":100}])
+                                    if state.moved {
+                                        json!([
+                                            {"name":"episode.mkv", "is_dir":false, "size":100},
+                                            {"name":"episode (1).mkv", "is_dir":false, "size":100}
+                                        ])
+                                    } else {
+                                        json!([{"name":"episode.mkv", "is_dir":false, "size":100}])
+                                    }
                                 }
                                 "/downloads/.oani-download-tmp" => json!([]),
                                 _ => panic!("unexpected list path: {path}"),
@@ -423,6 +524,7 @@ mod tests {
             "/downloads/.oani-download-tmp/task-7",
             "/media/anime/Series/Season 1",
             detected.as_deref().unwrap(),
+            "episode.mkv",
         )
         .await
         .unwrap();
@@ -442,6 +544,7 @@ mod tests {
                 "/media/anime",
                 "/downloads/.oani-download-tmp/task-7",
                 "/media/anime/Series/Season 1",
+                "episode.mkv",
                 "episode.mkv"
             )
             .await,

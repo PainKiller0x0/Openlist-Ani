@@ -12,12 +12,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = AppConfig::load(&config_path)?;
     let auth = AuthSettings::from_env()?;
     let listener = TcpListener::bind(config.bind).await?;
-    let app = router(
-        AppState::new(config.data_db, config.task_mementos_db)
-            .with_auth(auth)
-            .with_config_file(config_path),
-    )
-    .into_make_service_with_connect_info::<SocketAddr>();
+    let state = AppState::new(config.data_db, config.task_mementos_db)
+        .with_auth(auth)
+        .with_config_file(config_path);
+    state
+        .recover_download_workers()
+        .await
+        .map_err(std::io::Error::other)?;
+    let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

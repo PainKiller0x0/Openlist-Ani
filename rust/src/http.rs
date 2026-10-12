@@ -1,4 +1,9 @@
-use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use axum::{
     Json, Router,
@@ -15,7 +20,12 @@ use serde_json::json;
 
 use crate::{
     auth::AuthSettings,
-    config_store::{ConfigDocumentStore, ConfigStoreError, UiSettingsUpdate},
+    config_store::{
+        ConfigDocumentStore, ConfigStoreError, DownloadRuntimeSettings, UiSettingsUpdate,
+    },
+    download_service::{
+        DownloadServiceError, recover_submitted_tasks, run_download_worker, submit_download,
+    },
     naming::validate_rename_format,
     openlist::OpenListClient,
     rss::{ParseRssResponse, RssError, parse_rss as fetch_parse_rss},
@@ -32,6 +42,7 @@ pub struct AppState {
     databases: Arc<LegacyDbPaths>,
     auth: Option<Arc<AuthSettings>>,
     config: Option<Arc<ConfigDocumentStore>>,
+    download_workers: Arc<Mutex<HashSet<String>>>,
 }
 
 impl AppState {
@@ -43,6 +54,7 @@ impl AppState {
             }),
             auth: None,
             config: None,
+            download_workers: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -54,6 +66,43 @@ impl AppState {
     pub fn with_config_file(mut self, path: impl Into<PathBuf>) -> Self {
         self.config = Some(Arc::new(ConfigDocumentStore::new(path)));
         self
+    }
+
+    pub async fn recover_download_workers(&self) -> Result<(), String> {
+        let Some(config) = &self.config else {
+            return Ok(());
+        };
+        let config = Arc::clone(config);
+        let settings = tokio::task::spawn_blocking(move || config.download_runtime_settings())
+            .await
+            .map_err(|_| "could not load download settings".to_string())?
+            .map_err(|_| "could not load download settings".to_string())?;
+        let task_ids = recover_submitted_tasks((*self.databases).clone())
+            .await
+            .map_err(|_| "could not recover submitted downloads".to_string())?;
+        for task_id in task_ids {
+            self.start_download_worker(task_id, settings.clone());
+        }
+        Ok(())
+    }
+
+    fn start_download_worker(&self, task_id: String, settings: DownloadRuntimeSettings) {
+        let Ok(mut active) = self.download_workers.lock() else {
+            return;
+        };
+        if !active.insert(task_id.clone()) {
+            return;
+        }
+        drop(active);
+
+        let databases = (*self.databases).clone();
+        let active = Arc::clone(&self.download_workers);
+        tokio::spawn(async move {
+            run_download_worker(databases, settings, task_id.clone()).await;
+            if let Ok(mut active) = active.lock() {
+                active.remove(&task_id);
+            }
+        });
     }
 }
 
@@ -74,12 +123,101 @@ pub fn router(state: AppState) -> Router {
             get(ui_settings).post(ui_update_settings),
         )
         .route("/api/ui/state", get(ui_state))
-        .route("/api/downloads", get(list_downloads))
+        .route("/api/downloads", get(list_downloads).post(create_download))
         .route("/api/downloads/{task_id}", get(get_download))
         .route("/api/parse_rss", post(parse_rss_endpoint))
         .route("/api/resolve_torrent", post(resolve_torrent_endpoint))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth_gate))
+}
+
+#[derive(Deserialize)]
+struct CreateDownloadRequest {
+    download_url: String,
+    title: String,
+}
+
+async fn create_download(
+    State(state): State<AppState>,
+    Json(request): Json<CreateDownloadRequest>,
+) -> Response {
+    let Some(config) = state.config.as_ref().cloned() else {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration is unavailable",
+        );
+    };
+    let settings =
+        match tokio::task::spawn_blocking(move || config.download_runtime_settings()).await {
+            Ok(Ok(settings)) => settings,
+            _ => {
+                return api_error(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "download configuration is unavailable",
+                );
+            }
+        };
+    match submit_download(
+        (*state.databases).clone(),
+        settings.clone(),
+        &request.title,
+        &request.download_url,
+    )
+    .await
+    {
+        Ok(submitted) => {
+            state.start_download_worker(submitted.task_id.clone(), settings);
+            match task_response(
+                &submitted.task_id,
+                &submitted.state,
+                &submitted.payload_json,
+            ) {
+                Ok(Some(task)) => Json(json!({
+                    "success": true,
+                    "message": format!("Download started: {}", request.title),
+                    "task": task
+                }))
+                .into_response(),
+                _ => api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "stored download task is invalid",
+                ),
+            }
+        }
+        Err(error) => download_service_error(error),
+    }
+}
+
+fn download_service_error(error: DownloadServiceError) -> Response {
+    match error {
+        DownloadServiceError::InvalidUrl => api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "download URL must be magnet or HTTP(S)",
+        ),
+        DownloadServiceError::InvalidTitle => api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "title must include a recognizable season and episode",
+        ),
+        DownloadServiceError::Duplicate(task_id) => api_error(
+            StatusCode::CONFLICT,
+            &format!("Already downloading or previously submitted as task {task_id}"),
+        ),
+        DownloadServiceError::Rejected => {
+            api_error(StatusCode::BAD_GATEWAY, "OpenList rejected the download")
+        }
+        DownloadServiceError::Uncertain => api_error(
+            StatusCode::BAD_GATEWAY,
+            "OpenList submission result is uncertain; task will not be resent",
+        ),
+        DownloadServiceError::InvalidConfiguration => api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "download configuration is invalid",
+        ),
+        _ => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not create download task",
+        ),
+    }
 }
 
 async fn auth_gate(State(state): State<AppState>, request: Request, next: Next) -> Response {

@@ -50,6 +50,15 @@ pub struct OpenListValidationContext {
     pub offline_download_tool: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct DownloadRuntimeSettings {
+    pub openlist_url: String,
+    pub download_path: String,
+    pub token: String,
+    pub offline_download_tool: String,
+    pub rename_format: String,
+}
+
 #[derive(Default)]
 pub struct UiSettingsUpdate {
     pub global_exclude_patterns: Vec<String>,
@@ -235,6 +244,18 @@ impl ConfigDocumentStore {
             download_path: value("download_path", "/"),
             token: value("token", ""),
             offline_download_tool: value("offline_download_tool", "qBittorrent"),
+        })
+    }
+
+    pub fn download_runtime_settings(&self) -> Result<DownloadRuntimeSettings, ConfigStoreError> {
+        let openlist = self.openlist_validation_context()?;
+        let ui = self.ui_settings()?;
+        Ok(DownloadRuntimeSettings {
+            openlist_url: openlist.base_url,
+            download_path: openlist.download_path,
+            token: openlist.token,
+            offline_download_tool: openlist.offline_download_tool,
+            rename_format: ui.rename_format,
         })
     }
 
