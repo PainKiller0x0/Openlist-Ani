@@ -8,6 +8,7 @@ pub mod naming;
 pub mod openlist;
 pub mod rss;
 pub mod storage;
+pub mod torrent;
 
 pub use auth::AuthSettings;
 pub use config::AppConfig;

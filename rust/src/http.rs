@@ -20,6 +20,7 @@ use crate::{
     openlist::OpenListClient,
     rss::{ParseRssResponse, RssError, parse_rss as fetch_parse_rss},
     storage::{LegacyDbPaths, LegacyResourceStore, LegacyTaskMementoStore, check_legacy_databases},
+    torrent::{ResolveTorrentResponse, TorrentError, resolve_torrent as fetch_resolve_torrent},
 };
 
 const SESSION_COOKIE: &str = "op_ani_session";
@@ -76,6 +77,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/downloads", get(list_downloads))
         .route("/api/downloads/{task_id}", get(get_download))
         .route("/api/parse_rss", post(parse_rss_endpoint))
+        .route("/api/resolve_torrent", post(resolve_torrent_endpoint))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth_gate))
 }
@@ -512,6 +514,40 @@ fn rss_error_message(error: RssError) -> String {
         RssError::InvalidEncoding | RssError::InvalidXml => {
             "Failed to fetch RSS: response is not valid RSS/Atom XML".to_string()
         }
+    }
+}
+
+#[derive(Deserialize)]
+struct ResolveTorrentRequest {
+    url: String,
+}
+
+async fn resolve_torrent_endpoint(
+    Json(request): Json<ResolveTorrentRequest>,
+) -> Json<ResolveTorrentResponse> {
+    match fetch_resolve_torrent(&request.url).await {
+        Ok(response) => Json(response),
+        Err(error) => Json(ResolveTorrentResponse::failure(torrent_error_message(
+            error,
+        ))),
+    }
+}
+
+fn torrent_error_message(error: TorrentError) -> String {
+    match error {
+        TorrentError::InvalidUrl => {
+            "Invalid torrent URL (expected 'http(s)://.../*.torrent').".to_string()
+        }
+        TorrentError::Request(Some(status)) => {
+            format!("Failed to download .torrent: HTTP {status}.")
+        }
+        TorrentError::Request(None) => {
+            "Failed to download .torrent: HTTP client request failed.".to_string()
+        }
+        TorrentError::TooLarge => {
+            "Failed to download .torrent: file exceeds 10485760 bytes; refusing to read.".to_string()
+        }
+        TorrentError::InvalidMetadata => "Downloaded the .torrent file but could not parse a name from it. Ask the user for the release title; do NOT fabricate one.".to_string(),
     }
 }
 
