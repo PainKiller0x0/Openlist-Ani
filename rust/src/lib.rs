@@ -6,6 +6,7 @@ pub mod config_store;
 pub mod download_service;
 pub mod download_workflow;
 pub mod http;
+pub mod mikan;
 pub mod naming;
 pub mod openlist;
 pub mod release_parser;

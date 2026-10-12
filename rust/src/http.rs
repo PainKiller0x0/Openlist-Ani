@@ -31,6 +31,7 @@ use crate::{
     download_service::{
         DownloadServiceError, recover_submitted_tasks, run_download_worker, submit_download,
     },
+    mikan::{self, MikanError},
     naming::{NamingInput, build_plan, validate_rename_format},
     openlist::OpenListClient,
     release_parser::parse_release_title,
@@ -164,6 +165,9 @@ pub fn router(state: AppState) -> Router {
             get(ui_settings).post(ui_update_settings),
         )
         .route("/api/ui/state", get(ui_state))
+        .route("/api/ui/mikan/search", post(ui_mikan_search))
+        .route("/api/ui/mikan/groups", post(ui_mikan_groups))
+        .route("/api/ui/mikan/rss", post(ui_mikan_rss))
         .route("/api/ui/rss/preview", post(ui_preview_rss))
         .route("/api/ui/rss", post(ui_add_rss).delete(ui_remove_rss))
         .route("/api/ui/rss/toggle", post(ui_toggle_rss))
@@ -555,6 +559,148 @@ struct RssScanRunning(Arc<AtomicBool>);
 impl Drop for RssScanRunning {
     fn drop(&mut self) {
         self.0.store(false, Ordering::Relaxed);
+    }
+}
+
+#[derive(Deserialize)]
+struct MikanSearchRequest {
+    keyword: String,
+    base_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MikanGroupsRequest {
+    bangumi_id: i64,
+    base_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MikanRssRequest {
+    bangumi_id: i64,
+    subgroup_id: Option<i64>,
+    base_url: Option<String>,
+}
+
+fn select_mikan_base_url(state: &AppState, requested: Option<&str>) -> Result<String, Response> {
+    let Some(config) = state.config.as_ref() else {
+        return Err(api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration is unavailable",
+        ));
+    };
+    let base_url = match requested.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(value) => value.to_string(),
+        None => match config.ui_settings() {
+            Ok(settings) => settings.mikan_base_url,
+            Err(_) => {
+                return Err(api_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "could not read Mikan configuration",
+                ));
+            }
+        },
+    };
+    if base_url.chars().count() > 1_000 {
+        return Err(api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Mikan 地址不能超过 1000 个字符",
+        ));
+    }
+    let Ok(parsed) = reqwest::Url::parse(&base_url) else {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "Mikan 地址必须是完整的 http(s) 地址",
+        ));
+    };
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err(api_error(
+            StatusCode::BAD_REQUEST,
+            "Mikan 地址必须是完整的 http(s) 地址",
+        ));
+    }
+    Ok(format!("{}/", base_url.trim_end_matches('/')))
+}
+
+async fn ui_mikan_search(
+    State(state): State<AppState>,
+    Json(request): Json<MikanSearchRequest>,
+) -> Response {
+    let keyword = request.keyword.trim();
+    if keyword.is_empty() || keyword.chars().count() > 200 {
+        return api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "搜索关键词必填且不能超过 200 个字符",
+        );
+    }
+    let base_url = match select_mikan_base_url(&state, request.base_url.as_deref()) {
+        Ok(base_url) => base_url,
+        Err(response) => return response,
+    };
+    match mikan::search(&base_url, keyword).await {
+        Ok(results) => {
+            Json(json!({"success": true, "results": results, "base_url": base_url})).into_response()
+        }
+        Err(MikanError::InvalidBaseUrl) => api_error(
+            StatusCode::BAD_REQUEST,
+            "Mikan 地址必须是完整的 http(s) 地址",
+        ),
+        Err(_) => api_error(StatusCode::BAD_GATEWAY, "Mikan 搜索失败"),
+    }
+}
+
+async fn ui_mikan_groups(
+    State(state): State<AppState>,
+    Json(request): Json<MikanGroupsRequest>,
+) -> Response {
+    if request.bangumi_id <= 0 {
+        return api_error(StatusCode::UNPROCESSABLE_ENTITY, "bangumi_id 必须大于 0");
+    }
+    let base_url = match select_mikan_base_url(&state, request.base_url.as_deref()) {
+        Ok(base_url) => base_url,
+        Err(response) => return response,
+    };
+    match mikan::groups(&base_url, request.bangumi_id).await {
+        Ok(groups) => {
+            let all_rss_url = match mikan::rss_url(&base_url, request.bangumi_id, None) {
+                Ok(url) => url,
+                Err(_) => return api_error(StatusCode::BAD_REQUEST, "Mikan 地址无效"),
+            };
+            Json(json!({
+                "success": true,
+                "bangumi_id": request.bangumi_id,
+                "all_rss_url": all_rss_url,
+                "groups": groups
+            }))
+            .into_response()
+        }
+        Err(MikanError::InvalidBaseUrl) => api_error(
+            StatusCode::BAD_REQUEST,
+            "Mikan 地址必须是完整的 http(s) 地址",
+        ),
+        Err(_) => api_error(StatusCode::BAD_GATEWAY, "Mikan 字幕组读取失败"),
+    }
+}
+
+async fn ui_mikan_rss(
+    State(state): State<AppState>,
+    Json(request): Json<MikanRssRequest>,
+) -> Response {
+    if request.bangumi_id <= 0 || request.subgroup_id.is_some_and(|id| id <= 0) {
+        return api_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "bangumi_id 和 subgroup_id 必须大于 0",
+        );
+    }
+    let base_url = match select_mikan_base_url(&state, request.base_url.as_deref()) {
+        Ok(base_url) => base_url,
+        Err(response) => return response,
+    };
+    match mikan::rss_url(&base_url, request.bangumi_id, request.subgroup_id) {
+        Ok(url) => Json(json!({"success": true, "rss_url": url})).into_response(),
+        Err(_) => api_error(
+            StatusCode::BAD_REQUEST,
+            "Mikan 地址必须是完整的 http(s) 地址",
+        ),
     }
 }
 
