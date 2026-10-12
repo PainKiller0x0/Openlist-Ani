@@ -5,7 +5,7 @@ This status records executable Rust behavior only. A copied acceptance case or a
 | Work area | Status | Evidence |
 | --- | --- | --- |
 | A. Compatibility foundation | Partial | Config loopback validation, health/readiness, and legacy auth contract tests |
-| B. Data and pure rules | Partial | Legacy resource idempotent write/read, batched title/episode lookups, latest-episode exact/normalized fallback with season isolation, memento raw-payload persistence tests; 14 naming golden cases |
+| B. Data and pure rules | Partial | Legacy resource idempotent write/read, batched title/episode lookups, latest-episode exact/normalized fallback with season isolation, revision-checked atomic TOML writes preserving comments/unknown sections, memento raw-payload persistence tests; 14 naming golden cases |
 | C. External adapters | Not started | No adapter tests |
 | D. Download state machine and recovery | Not started | No workflow implementation |
 | E. Torrent and magnet handling | Not started | Synthetic fixtures copied; no parser/helper implementation |

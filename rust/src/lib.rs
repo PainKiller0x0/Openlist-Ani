@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod config;
+pub mod config_store;
 pub mod http;
 pub mod naming;
 pub mod storage;

@@ -8,6 +8,7 @@ rust-version = "1.85"
 axum = { version = "0.8", features = ["json", "http1", "tokio"] }
 base64 = "0.22"
 hmac = "0.12"
+fs2 = "0.4"
 pbkdf2 = "0.12"
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

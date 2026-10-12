@@ -30,6 +30,10 @@ impl AppConfig {
         let path = path.as_ref();
         let source = std::fs::read_to_string(path)?;
         let document = source.parse::<DocumentMut>()?;
+        Self::from_document(path, &document)
+    }
+
+    pub(crate) fn from_document(path: &Path, document: &DocumentMut) -> Result<Self, ConfigError> {
         let backend = document.get("backend").and_then(Item::as_table);
 
         let host = backend
