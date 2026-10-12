@@ -1,73 +1,110 @@
-# OpenList-Ani
+<p align="center">
+  <img src="imgs/logo.png" alt="OpenList-Ani Logo" width="360" />
+</p>
 
-OpenList-Ani（op-ani）是一个面向个人媒体库的 RSS 追番与下载任务管理工具。它负责发现新资源、识别番剧与集数、预览命名和目录，并把确认后的下载任务交给 OpenList。
+<h1 align="center">OpenList-Ani · op-ani</h1>
 
-**当前默认分支 `master` 是 Rust 实现。** 原有 Python 版本保留在 [`python` 分支](https://github.com/PainKiller0x0/Openlist-Ani/tree/python)，作为历史实现和兼容参考。
+<p align="center">
+  <b>从找番、识别、过滤，到网盘下载和规范命名的一站式追番工具</b>
+</p>
 
-## 工作流程
+<p align="center">
+  这是基于上游 OpenList-Ani 持续维护的个人整合版，重点服务于 OpenList + 迅雷/夸克等网盘 + SmartStrm + Jellyfin 的媒体库工作流。
+</p>
+
+<p align="center">
+  当前默认 <code>master</code> 是 Rust 运行版本；原 Python 版本和它的 README 保留在 <a href="https://github.com/PainKiller0x0/Openlist-Ani/tree/python"><code>python</code> 分支</a>。
+</p>
+
+---
+
+## 这是什么
+
+op-ani 负责“发现资源”和“创建下载任务”，不负责保存媒体文件，也不是播放器。
+
+它从 Mikan 或其他 RSS 获取更新，识别番剧信息，按规则过滤资源，经用户确认后交给 OpenList 离线下载，再按 Emby/Jellyfin 友好的格式整理名称和目录。
 
 ```text
 Mikan / RSS
     ↓
-op-ani：解析、识别、过滤、预览最终文件名和目录
+op-ani：识别、TMDB 校验、过滤、最终命名与目录预览
     ↓
-OpenList：创建离线下载任务
+OpenList：创建离线下载任务并保存到目标网盘
     ↓
-SmartStrm（可选）：生成 STRM 并触发媒体库刷新
+SmartStrm（可选）：把网盘文件生成 STRM
     ↓
-Jellyfin / VidHub 等客户端
+Jellyfin / VidHub / 其他客户端播放
 ```
 
-OpenList 是下载和网盘存储入口；SmartStrm、Jellyfin 和播放器不是运行 op-ani 的硬依赖。
+SmartStrm、Jellyfin 和播放器都不是 op-ani 的硬依赖。只使用 OpenList 下载时，op-ani 也可以单独运行。
 
-## 当前能力
+## 我们这版做了什么
 
-- Rust/Axum 后端、登录会话、RSS 追踪页面、设置、日志和下载任务管理。
-- Mikan 搜索作品、字幕组并构建 RSS；也可以直接添加 RSS。
-- 预览 RSS 识别结果、排除规则、文件名和完整下载目录，再决定是否开始追踪。
-- 通过 TMDB 校验作品身份和季集信息；支持配置 OpenAI/Anthropic 兼容服务辅助识别。
-- 独立设置文件名标题、文件名季号、归档季目录和集数偏移，适配特殊作品命名。
-- 向 OpenList 提交下载任务，持久化任务进度，支持受控重试和失败任务归档。
-- 下载完成后按规则重命名、移动；可选通知 SmartStrm。
-- 兼容现有 TOML 配置和 SQLite 业务表；Rust 下载流程另用持久化状态表记录任务，不重建旧表或搬动既有数据。
+### 网页端追番入口
 
-## 仓库结构
+- 在首页通过 Mikan 搜索番剧、选择字幕组并构建 RSS，也可以直接添加 RSS。
+- 订阅前预览 TMDB 识别、RSS 条目、排除结果、改名结果和完整下载目录。
+- 订阅详情页可以查看命名/归档规则，并手动刷新 RSS 预览；预览不会创建下载任务。
+- 确认后保存订阅并开始追踪；首页可查看进度并管理暂停、完结和删除。
 
-- `rust/`：当前 Rust 服务、测试、部署脚本和迁移文档。
-- `src/openlist_ani/adapters/inbound/http/web/`：Rust 服务使用的网页资源。Rust 从文件系统读取该目录；离开源码目录部署时使用 `OPENLIST_ANI_WEB_ROOT` 指向它。
-- `python` 分支：原 Python 版本，保留原有 README 和代码历史。
-- `rust/docs/IMPLEMENTATION_STATUS.md`：已实现能力和仍未迁移的功能。
-- `rust/docs/API_CONTRACT.md`：HTTP/API 行为和兼容性说明。
-- `rust/docs/DEPLOYMENT_RUNBOOK.md`：隔离验证、部署、验收和回滚流程。
-- `rust/docs/LIVE_RELEASE.md`：已完成的线上切换记录和验证证据。
+### RSS 过滤与订阅管理
 
-## 本地开发与测试
+- 支持全局与单订阅排除规则，多个规则以 `|` 分隔。
+- 显示条目数、排除数量以及符合当前规则的条目。
+- 支持扫描、暂停/恢复、标记完结、修正 RSS 和删除订阅。
+- 页面显示最近扫描、下一次扫描、最新处理集数和目标目录。
 
-需要 Rust 1.85。所有 Rust 命令从 `rust/` 目录执行：
+### TMDB 媒体识别与命名
+
+- 从资源标题识别番剧、季集和字幕组信息，并通过 TMDB 校验作品身份。
+- 可配置 OpenAI/Anthropic 兼容服务辅助解析；模型输出不会取代 TMDB 的作品身份校验。
+- 文件名标题、文件名季号、归档季目录和集数偏移可以独立设置，适配特殊作品。
+- 常见命名形式为 `番剧名 - S01E01`；预览会显示最终文件名主体和下载目录。
+
+### OpenList 下载与任务恢复
+
+- RSS 下载和网页上传 `.torrent` 均可交给 OpenList 处理。
+- 跟踪持久化任务状态，支持受控恢复、失败任务归档和重试。
+- 下载完成后按计划整理名称与目录；可选通知 SmartStrm 刷新媒体库。
+- 当前 Rust 版本没有实现磁力链接 DHT 元数据解析；无法识别的任务会明确失败，不会伪造作品名。
+
+## 部署与安全
+
+Rust 服务沿用现有 TOML 配置和 SQLite 业务数据，保留旧表，并以独立持久化状态记录 Rust 下载操作。生产部署、服务切换和回滚流程见 [`rust/docs/DEPLOYMENT_RUNBOOK.md`](rust/docs/DEPLOYMENT_RUNBOOK.md)。
+
+- 不要提交真实 `config.toml`、认证环境文件、API Key、机器人令牌、生产数据库、日志或上传的种子文件。
+- 使用隔离的测试配置和数据库进行本地开发，不要让开发实例操作生产下载目录。
+- 服务应绑定本机回环地址，通过受控反向代理和登录认证提供访问，不要直接暴露管理端口。
+- OpenList 与 SmartStrm 迅雷令牌同步桥仍在 [`deploy/xunlei-token-bridge/`](deploy/xunlei-token-bridge/)，仅处理令牌同步，不负责转存、刮削或播放。
+
+## 开发与测试
+
+需要 Rust 1.85。进入 `rust/` 目录后运行：
 
 ```sh
-cd rust
 cargo +1.85 fmt --all -- --check
 cargo +1.85 test --locked
 cargo +1.85 clippy --locked --all-targets -- -D warnings
 cargo +1.85 build --locked --release
 ```
 
-这些命令验证 Rust 代码，不会启动真实下载或连接生产网盘。运行服务需要有效的配置文件、兼容的 SQLite 数据库，以及通过环境变量提供的认证信息。请使用隔离的测试配置和数据库；不要把生产凭据或数据库提交到仓库。
+以上是代码检查，不会启动真实下载或连接生产网盘。Rust 服务提供网页资源时默认从仓库的 `src/openlist_ani/adapters/inbound/http/web/` 读取；脱离源码目录部署时用 `OPENLIST_ANI_WEB_ROOT` 指定该目录。
 
-完整的服务启动、配置和生产操作要求见 [`rust/README.md`](rust/README.md) 与部署手册。生产服务应只绑定本机回环地址，并通过受控反向代理访问。
+更多说明：
 
-## 迁移边界
+- [`rust/README.md`](rust/README.md)：Rust 版概况和本地检查。
+- [`rust/IMPLEMENTATION_STATUS.md`](rust/IMPLEMENTATION_STATUS.md)：已实现范围与未迁移项。
+- [`rust/docs/API_CONTRACT.md`](rust/docs/API_CONTRACT.md)：HTTP/API 兼容说明。
+- [`rust/docs/LIVE_RELEASE.md`](rust/docs/LIVE_RELEASE.md)：线上切换、验收和回滚记录。
 
-Rust 版本已承接主要追番、RSS、识别和下载流程，但**不宣称与 Python 旧版的全部功能完全等价**。例如，磁力链接的 DHT 元数据解析、Mikan 账号登录/订阅、聊天机器人和助手集成，以及部分旧接口仍有迁移缺口。完整清单和当前验证状态见 [`实现状态`](rust/IMPLEMENTATION_STATUS.md)。
+## 版本关系与迁移边界
 
-## 安全说明
+本仓库基于上游 [TwooSix/Openlist-Ani](https://github.com/TwooSix/Openlist-Ani) 继续维护，并保留原项目的基础架构和许可证信息。
 
-- 不要提交 `config.toml`、认证环境文件、API Key、机器人令牌、生产数据库、日志或上传的种子文件。
-- 使用 `config.toml.example` 作为配置结构参考；上线配置应放在仓库之外并限制文件权限。
-- 不要把服务直接暴露到公网；通过回环绑定、反向代理和访问控制提供网页入口。
-- 部署、重启或回滚生产服务前，请遵循部署手册并保留可验证的回滚点。
+Rust `master` 已承接主要追番、RSS、识别和下载流程，但不宣称与旧 Python 版本的所有功能完全等价。Mikan 账号登录/订阅、聊天机器人和助手集成、磁力 DHT 元数据解析及部分旧接口仍未迁移；具体状态见 [`实现状态`](rust/IMPLEMENTATION_STATUS.md)。原 Python 代码与对应说明保留在 [`python` 分支](https://github.com/PainKiller0x0/Openlist-Ani/tree/python)。
 
-## 许可证与上游
+## 截图
 
-本项目基于 OpenList-Ani 相关上游代码持续维护。请查看仓库中的许可证文件及 [`python` 分支](https://github.com/PainKiller0x0/Openlist-Ani/tree/python)中的原始项目说明，了解代码来源与适用条款。
+| 追番预览 | 任务与识别 |
+| :---: | :---: |
+| <img src="imgs/readme-following-preview.png" width="420" alt="追番与 RSS 预览" /> | <img src="imgs/readme-task-identification.jpg" width="420" alt="下载任务与媒体识别" /> |
