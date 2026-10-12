@@ -1,10 +1,11 @@
-use std::{net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Json, Router,
     body::{Body, to_bytes},
-    extract::{ConnectInfo, Request, State},
+    extract::{ConnectInfo, Path, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -14,7 +15,8 @@ use serde_json::json;
 
 use crate::{
     auth::AuthSettings,
-    storage::{LegacyDbPaths, check_legacy_databases},
+    config_store::ConfigDocumentStore,
+    storage::{LegacyDbPaths, LegacyResourceStore, LegacyTaskMementoStore, check_legacy_databases},
 };
 
 const SESSION_COOKIE: &str = "op_ani_session";
@@ -25,6 +27,7 @@ const MAX_LOGIN_BODY_BYTES: usize = 8 * 1024;
 pub struct AppState {
     databases: Arc<LegacyDbPaths>,
     auth: Option<Arc<AuthSettings>>,
+    config: Option<Arc<ConfigDocumentStore>>,
 }
 
 impl AppState {
@@ -35,11 +38,17 @@ impl AppState {
                 task_mementos_db: task_mementos_db.into(),
             }),
             auth: None,
+            config: None,
         }
     }
 
     pub fn with_auth(mut self, auth: AuthSettings) -> Self {
         self.auth = Some(Arc::new(auth));
+        self
+    }
+
+    pub fn with_config_file(mut self, path: impl Into<PathBuf>) -> Self {
+        self.config = Some(Arc::new(ConfigDocumentStore::new(path)));
         self
     }
 }
@@ -56,7 +65,254 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/session", get(auth_session))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
-        .with_state(state)
+        .route("/api/ui/settings", get(ui_settings))
+        .route("/api/ui/state", get(ui_state))
+        .route("/api/downloads", get(list_downloads))
+        .route("/api/downloads/{task_id}", get(get_download))
+        .with_state(state.clone())
+        .layer(middleware::from_fn_with_state(state, auth_gate))
+}
+
+async fn auth_gate(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let path = request.uri().path();
+    let public = matches!(
+        path,
+        "/healthz" | "/readyz" | "/api/auth/login" | "/api/auth/logout" | "/api/auth/session"
+    );
+    if public || state.auth.is_none() {
+        return next.run(request).await;
+    }
+
+    let authenticated = state.auth.as_ref().is_some_and(|auth| {
+        cookie_value(request.headers(), SESSION_COOKIE)
+            .is_some_and(|token| auth.session_username(&token).is_some())
+    });
+    if authenticated {
+        return next.run(request).await;
+    }
+    if path.starts_with("/api/") {
+        api_error(StatusCode::UNAUTHORIZED, "请先登录 op-ani")
+    } else {
+        (StatusCode::SEE_OTHER, [(header::LOCATION, "/login")]).into_response()
+    }
+}
+
+async fn ui_settings(State(state): State<AppState>) -> Response {
+    let Some(config) = state.config else {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration is unavailable",
+        );
+    };
+    match tokio::task::spawn_blocking(move || config.ui_settings()).await {
+        Ok(Ok(settings)) => Json(settings).into_response(),
+        _ => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not read UI settings",
+        ),
+    }
+}
+
+async fn ui_state(State(state): State<AppState>) -> Response {
+    let Some(config) = state.config else {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration is unavailable",
+        );
+    };
+    let databases = Arc::clone(&state.databases);
+    match tokio::task::spawn_blocking(move || load_ui_state(&config, &databases)).await {
+        Ok(Ok(state)) => Json(state).into_response(),
+        _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "could not read UI state"),
+    }
+}
+
+fn load_ui_state(
+    config: &ConfigDocumentStore,
+    databases: &LegacyDbPaths,
+) -> Result<serde_json::Value, ()> {
+    let settings = config.ui_settings().map_err(|_| ())?;
+    let mut subscriptions = config.ui_subscriptions().map_err(|_| ())?;
+    let anime_names = subscriptions
+        .iter()
+        .filter_map(subscription_identity)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let seasons = subscriptions
+        .iter()
+        .filter_map(|item| {
+            let name = subscription_identity(item)?;
+            let season = item.get("season").and_then(serde_json::Value::as_i64)?;
+            Some((name.to_string(), season))
+        })
+        .collect::<HashMap<_, _>>();
+    let latest = LegacyResourceStore::new(&databases.data_db)
+        .find_latest_episodes(&anime_names, &seasons)
+        .map_err(|_| ())?;
+    for item in &mut subscriptions {
+        if let Some(episode) = subscription_identity(item).and_then(|name| latest.get(name)) {
+            item["latest_episode"] = json!(episode);
+        }
+    }
+    let rss_urls = subscriptions
+        .iter()
+        .filter(|item| {
+            item.get("enabled").and_then(serde_json::Value::as_bool) != Some(false)
+                && item.get("completed").and_then(serde_json::Value::as_bool) != Some(true)
+        })
+        .filter_map(|item| item.get("url").and_then(serde_json::Value::as_str))
+        .collect::<Vec<_>>();
+    let records = LegacyTaskMementoStore::new(&databases.task_mementos_db)
+        .load_all()
+        .map_err(|_| ())?;
+    let tasks = records
+        .iter()
+        .map(|record| task_response(&record.task_id, &record.state, &record.payload_json))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "rss_urls": rss_urls,
+        "rss_subscriptions": subscriptions,
+        "global_exclude_patterns": settings.global_exclude_patterns,
+        "openlist_url": settings.openlist_url,
+        "download_path": settings.download_path,
+        "poll_interval_seconds": settings.poll_interval_seconds,
+        "max_download_retries": settings.max_download_retries,
+        "mikan_base_url": settings.mikan_base_url,
+        "rss_status": {
+            "enabled": false,
+            "running": false,
+            "status": "disabled",
+            "message": "Rust RSS scanner is not running"
+        },
+        "tasks": tasks
+    }))
+}
+
+fn subscription_identity(item: &serde_json::Value) -> Option<&str> {
+    item.get("anime_name")
+        .and_then(serde_json::Value::as_str)
+        .filter(|name| !name.is_empty())
+        .or_else(|| {
+            item.get("name")
+                .and_then(serde_json::Value::as_str)
+                .filter(|name| !name.is_empty())
+        })
+}
+
+async fn list_downloads(State(state): State<AppState>) -> Response {
+    let database = Arc::clone(&state.databases);
+    match tokio::task::spawn_blocking(move || {
+        LegacyTaskMementoStore::new(&database.task_mementos_db).load_all()
+    })
+    .await
+    {
+        Ok(Ok(records)) => {
+            let tasks = match records
+                .iter()
+                .map(|record| task_response(&record.task_id, &record.state, &record.payload_json))
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(tasks) => tasks.into_iter().flatten().collect::<Vec<_>>(),
+                Err(()) => {
+                    return api_error(StatusCode::INTERNAL_SERVER_ERROR, "stored task is invalid");
+                }
+            };
+            Json(json!({"tasks": tasks, "total": tasks.len()})).into_response()
+        }
+        _ => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not read download tasks",
+        ),
+    }
+}
+
+async fn get_download(State(state): State<AppState>, Path(task_id): Path<String>) -> Response {
+    let database = Arc::clone(&state.databases);
+    match tokio::task::spawn_blocking(move || {
+        LegacyTaskMementoStore::new(&database.task_mementos_db).load_all()
+    })
+    .await
+    {
+        Ok(Ok(records)) => {
+            let Some(record) = records.iter().find(|record| record.task_id == task_id) else {
+                return api_error(StatusCode::NOT_FOUND, &format!("Task not found: {task_id}"));
+            };
+            match task_response(&record.task_id, &record.state, &record.payload_json) {
+                Ok(Some(task)) => Json(task).into_response(),
+                Ok(None) => api_error(StatusCode::NOT_FOUND, &format!("Task not found: {task_id}")),
+                Err(()) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "stored task is invalid"),
+            }
+        }
+        _ => api_error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "could not read download tasks",
+        ),
+    }
+}
+
+fn task_response(
+    task_id: &str,
+    state: &str,
+    payload_json: &str,
+) -> Result<Option<serde_json::Value>, ()> {
+    let payload: serde_json::Value = serde_json::from_str(payload_json).map_err(|_| ())?;
+    if payload.get("archived").and_then(serde_json::Value::as_bool) == Some(true) {
+        return Ok(None);
+    }
+    let release = payload
+        .get("release")
+        .and_then(serde_json::Value::as_object)
+        .ok_or(())?;
+    let required_text = |key: &str| {
+        release
+            .get(key)
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+            .ok_or(())
+    };
+    let optional = |value: Option<&serde_json::Value>| {
+        value
+            .filter(|item| !item.is_null())
+            .cloned()
+            .unwrap_or(serde_json::Value::Null)
+    };
+    let retry = payload.get("retry").and_then(serde_json::Value::as_object);
+    let downloader_payload = payload
+        .get("downloader")
+        .and_then(|downloader| downloader.get("payload"));
+    let created_at = payload
+        .get("created_at")
+        .and_then(serde_json::Value::as_str)
+        .ok_or(())?;
+    let updated_at = payload
+        .get("updated_at")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(created_at);
+
+    Ok(Some(json!({
+        "id": task_id,
+        "title": required_text("title")?,
+        "download_url": required_text("download_url")?,
+        "state": state,
+        "anime_name": optional(release.get("anime_name")),
+        "season": optional(release.get("season")),
+        "episode": optional(release.get("episode")),
+        "fansub": optional(release.get("fansub")),
+        "quality": optional(release.get("quality")),
+        "progress": optional(downloader_payload.and_then(|value| value.get("progress"))),
+        "error_message": optional(retry.and_then(|value| value.get("last_error"))),
+        "retry_count": retry.and_then(|value| value.get("retry_count")).and_then(serde_json::Value::as_i64).unwrap_or(0),
+        "created_at": created_at,
+        "updated_at": updated_at,
+        "started_at": optional(payload.get("started_at")),
+        "completed_at": optional(payload.get("completed_at")),
+        "save_path": payload.get("base_path").and_then(serde_json::Value::as_str).unwrap_or(""),
+        "final_path": optional(payload.get("output_path")),
+    })))
 }
 
 async fn healthz() -> Json<StatusResponse> {

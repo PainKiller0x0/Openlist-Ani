@@ -9,11 +9,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .nth(1)
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("config.toml"));
-    let config = AppConfig::load(config_path)?;
+    let config = AppConfig::load(&config_path)?;
     let auth = AuthSettings::from_env()?;
     let listener = TcpListener::bind(config.bind).await?;
-    let app = router(AppState::new(config.data_db, config.task_mementos_db).with_auth(auth))
-        .into_make_service_with_connect_info::<SocketAddr>();
+    let app = router(
+        AppState::new(config.data_db, config.task_mementos_db)
+            .with_auth(auth)
+            .with_config_file(config_path),
+    )
+    .into_make_service_with_connect_info::<SocketAddr>();
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

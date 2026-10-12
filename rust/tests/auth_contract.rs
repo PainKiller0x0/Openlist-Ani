@@ -204,3 +204,35 @@ async fn forwarded_https_is_trusted_only_from_loopback_proxy() {
         assert_eq!(set_cookie.contains("; Secure"), expected_secure);
     }
 }
+
+#[tokio::test]
+async fn private_api_requires_a_valid_session_when_auth_is_configured() {
+    let (auth, _) = fixture_auth();
+    let directory = tempdir().unwrap();
+    let app = router(
+        AppState::new(
+            directory.path().join("unused-data.db"),
+            directory.path().join("unused-tasks.db"),
+        )
+        .with_auth(auth),
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/ui/settings")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), 401);
+    let body = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap(),
+        json!({"detail": "请先登录 op-ani"})
+    );
+}

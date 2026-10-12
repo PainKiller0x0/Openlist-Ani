@@ -5,6 +5,8 @@ use std::{
 };
 
 use fs2::FileExt;
+use serde::Serialize;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use toml_edit::{DocumentMut, Table};
@@ -16,6 +18,28 @@ use crate::config::{AppConfig, ConfigError};
 pub struct ConfigSnapshot {
     pub app: AppConfig,
     pub revision: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UiSettings {
+    pub global_exclude_patterns: Vec<String>,
+    pub llm: UiLlmSettings,
+    pub download_path: String,
+    pub openlist_url: String,
+    pub rename_format: String,
+    pub poll_interval_seconds: i64,
+    pub max_download_retries: i64,
+    pub mikan_base_url: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct UiLlmSettings {
+    pub provider_type: String,
+    pub base_url: String,
+    pub model: String,
+    pub api_key_configured: bool,
+    pub tmdb_language: String,
+    pub metadata_parser_provider: String,
 }
 
 #[derive(Debug, Error)]
@@ -47,6 +71,121 @@ impl ConfigDocumentStore {
             app,
             revision: revision(source.as_bytes()),
         })
+    }
+
+    pub fn ui_settings(&self) -> Result<UiSettings, ConfigStoreError> {
+        let source = fs::read_to_string(&self.path)?;
+        let document = source.parse::<DocumentMut>().map_err(ConfigError::from)?;
+        let text = |section: &str, key: &str, default: &str| {
+            document
+                .get(section)
+                .and_then(toml_edit::Item::as_table)
+                .and_then(|table| table.get(key))
+                .and_then(toml_edit::Item::as_str)
+                .unwrap_or(default)
+                .to_string()
+        };
+        let integer = |section: &str, key: &str, default: i64| {
+            document
+                .get(section)
+                .and_then(toml_edit::Item::as_table)
+                .and_then(|table| table.get(key))
+                .and_then(toml_edit::Item::as_integer)
+                .unwrap_or(default)
+        };
+        let global_exclude_patterns = document
+            .get("rss")
+            .and_then(toml_edit::Item::as_table)
+            .and_then(|rss| rss.get("filter"))
+            .and_then(toml_edit::Item::as_table)
+            .and_then(|filter| filter.get("exclude_patterns"))
+            .and_then(toml_edit::Item::as_array)
+            .map(|patterns| {
+                patterns
+                    .iter()
+                    .filter_map(toml_edit::Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default();
+        let api_key_configured = !text("llm", "openai_api_key", "").trim().is_empty();
+
+        Ok(UiSettings {
+            global_exclude_patterns,
+            llm: UiLlmSettings {
+                provider_type: text("llm", "provider_type", "openai"),
+                base_url: text("llm", "openai_base_url", "https://api.openai.com/v1"),
+                model: text("llm", "openai_model", "gpt-4o"),
+                api_key_configured,
+                tmdb_language: text("llm", "tmdb_language", "zh-CN"),
+                metadata_parser_provider: text("metadata_parser", "provider", "regex"),
+            },
+            download_path: text("openlist", "download_path", "/"),
+            openlist_url: text("openlist", "url", "http://localhost:5244"),
+            rename_format: text(
+                "openlist",
+                "rename_format",
+                "{anime_name} - S{season:02d}E{episode:02d}",
+            ),
+            poll_interval_seconds: integer("rss", "interval_time", 300),
+            max_download_retries: integer("rss", "max_download_retries", 3),
+            mikan_base_url: text("mikan", "base_url", "https://mikanani.kas.pub/"),
+        })
+    }
+
+    pub fn ui_subscriptions(&self) -> Result<Vec<Value>, ConfigStoreError> {
+        let source = fs::read_to_string(&self.path)?;
+        let document = source.parse::<DocumentMut>().map_err(ConfigError::from)?;
+        let root = document
+            .get("openlist")
+            .and_then(toml_edit::Item::as_table)
+            .and_then(|table| table.get("download_path"))
+            .and_then(toml_edit::Item::as_str)
+            .unwrap_or("/")
+            .trim_end_matches('/')
+            .to_string();
+        let subscriptions = document
+            .get("rss")
+            .and_then(toml_edit::Item::as_table)
+            .and_then(|rss| rss.get("subscriptions"))
+            .and_then(toml_edit::Item::as_array_of_tables);
+
+        if let Some(subscriptions) = subscriptions {
+            return Ok(subscriptions
+                .iter()
+                .map(|item| subscription_json(item, &root))
+                .collect());
+        }
+
+        let legacy_urls = document
+            .get("rss")
+            .and_then(toml_edit::Item::as_table)
+            .and_then(|rss| rss.get("urls"))
+            .and_then(toml_edit::Item::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(toml_edit::Value::as_str)
+            .map(|url| {
+                json!({
+                    "url": url,
+                    "name": "",
+                    "anime_name": "",
+                    "download_directory_name": "",
+                    "episode_offset": 0,
+                    "filename_season_override": 0,
+                    "directory_season_override": 0,
+                    "enabled": true,
+                    "completed": false,
+                    "tmdb_id": null,
+                    "poster_url": "",
+                    "season": 1,
+                    "exclude_patterns": [],
+                    "latest_episode": null,
+                    "download_directory": ""
+                })
+            })
+            .collect();
+        Ok(legacy_urls)
     }
 
     pub fn update(
@@ -131,6 +270,80 @@ fn preserve_table_decor(original: &Table, updated: &mut Table) {
             preserve_item_decor(previous, item);
         }
     }
+}
+
+fn subscription_json(table: &Table, root: &str) -> Value {
+    let text = |key: &str| {
+        table
+            .get(key)
+            .and_then(toml_edit::Item::as_str)
+            .unwrap_or("")
+    };
+    let integer = |key: &str, default: i64| {
+        table
+            .get(key)
+            .and_then(toml_edit::Item::as_integer)
+            .unwrap_or(default)
+    };
+    let boolean = |key: &str, default: bool| {
+        table
+            .get(key)
+            .and_then(toml_edit::Item::as_bool)
+            .unwrap_or(default)
+    };
+    let name = text("name");
+    let anime_name = text("anime_name");
+    let directory_override = integer("directory_season_override", 0);
+    let season = integer("season", 1);
+    let directory_name = [text("download_directory_name"), anime_name, name]
+        .into_iter()
+        .find(|value| !value.trim().is_empty())
+        .unwrap_or("未命名订阅")
+        .chars()
+        .map(|character| {
+            if "<>:\"/\\|?*".contains(character) {
+                ' '
+            } else {
+                character
+            }
+        })
+        .collect::<String>()
+        .trim()
+        .to_string();
+    let archive_season = if directory_override > 0 {
+        directory_override
+    } else {
+        season.max(1)
+    };
+    let download_directory = format!("{root}/{directory_name}/Season {archive_season}");
+    let exclude_patterns = table
+        .get("exclude_patterns")
+        .and_then(toml_edit::Item::as_array)
+        .map(|patterns| {
+            patterns
+                .iter()
+                .filter_map(toml_edit::Value::as_str)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    json!({
+        "url": text("url"),
+        "name": name,
+        "anime_name": anime_name,
+        "download_directory_name": text("download_directory_name"),
+        "episode_offset": integer("episode_offset", 0),
+        "filename_season_override": integer("filename_season_override", 0),
+        "directory_season_override": directory_override,
+        "enabled": boolean("enabled", true),
+        "completed": boolean("completed", false),
+        "tmdb_id": table.get("tmdb_id").and_then(toml_edit::Item::as_integer),
+        "poster_url": text("poster_url"),
+        "season": season,
+        "exclude_patterns": exclude_patterns,
+        "latest_episode": null,
+        "download_directory": download_directory
+    })
 }
 
 fn revision(source: &[u8]) -> String {
