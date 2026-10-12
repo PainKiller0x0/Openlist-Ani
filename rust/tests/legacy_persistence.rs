@@ -2,6 +2,7 @@ use openlist_ani_rs::storage::{
     LegacyMementoRecord, LegacyResourceInput, LegacyResourceStore, LegacyTaskMementoStore,
 };
 use rusqlite::Connection;
+use std::collections::HashSet;
 use tempfile::tempdir;
 
 fn create_legacy_data_db(path: &std::path::Path) {
@@ -47,6 +48,28 @@ fn create_legacy_task_db(path: &std::path::Path) {
             );",
         )
         .unwrap();
+}
+
+fn resource_input(
+    title: &str,
+    anime_name: &str,
+    season: i64,
+    episode: i64,
+    fansub: &str,
+) -> LegacyResourceInput {
+    LegacyResourceInput {
+        url: format!("https://example.test/{title}"),
+        title: title.into(),
+        anime_name: Some(anime_name.into()),
+        season: Some(season),
+        episode: Some(episode),
+        fansub: Some(fansub.into()),
+        quality: Some("1080p".into()),
+        languages: Some("CHT".into()),
+        version: Some(1),
+        downloaded_at: None,
+        episode_name: None,
+    }
 }
 
 #[test]
@@ -152,4 +175,62 @@ fn persistence_never_creates_missing_legacy_database_files() {
     assert!(memento_result.is_err());
     assert!(!data_path.exists());
     assert!(!task_path.exists());
+}
+
+#[test]
+fn title_lookup_deduplicates_and_chunks_large_candidate_lists() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("data.db");
+    create_legacy_data_db(&path);
+    let store = LegacyResourceStore::new(&path);
+    for title in ["candidate-000", "candidate-949"] {
+        store
+            .insert_ignore_duplicate(&resource_input(title, "Example", 1, 1, "Group"))
+            .unwrap();
+    }
+    let mut candidates = (0..950)
+        .map(|index| format!("candidate-{index:03}"))
+        .collect::<Vec<_>>();
+    candidates.push("candidate-000".into());
+
+    let existing = store.find_existing_titles(&candidates).unwrap();
+
+    assert_eq!(
+        existing,
+        HashSet::from(["candidate-000".to_string(), "candidate-949".to_string()])
+    );
+}
+
+#[test]
+fn episode_lookup_is_season_specific_and_returns_all_release_versions() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("data.db");
+    create_legacy_data_db(&path);
+    let store = LegacyResourceStore::new(&path);
+    store
+        .insert_ignore_duplicate(&resource_input("episode-a", "Example", 1, 3, "Group A"))
+        .unwrap();
+    let mut second_version = resource_input("episode-b", "Example", 1, 3, "Group B");
+    second_version.version = Some(2);
+    store.insert_ignore_duplicate(&second_version).unwrap();
+    store
+        .insert_ignore_duplicate(&resource_input("episode-s2", "Example", 2, 3, "Group C"))
+        .unwrap();
+    let mut keys = vec![
+        ("Example".into(), 1, 3),
+        ("Example".into(), 9, 1),
+        ("Example".into(), 1, 3),
+    ];
+    keys.extend((0..300).map(|episode| ("Other".into(), 1, episode)));
+
+    let releases = store.find_releases_by_episodes(&keys).unwrap();
+
+    assert_eq!(releases.len(), 302);
+    assert_eq!(releases[&("Example".into(), 1, 3)].len(), 2);
+    assert_eq!(releases[&("Example".into(), 9, 1)], Vec::new());
+    let versions = releases[&("Example".into(), 1, 3)]
+        .iter()
+        .map(|release| release.version.unwrap())
+        .collect::<HashSet<_>>();
+    assert_eq!(versions, HashSet::from([1, 2]));
 }

@@ -3,9 +3,14 @@ use std::{
     time::Duration,
 };
 
+use rusqlite::params_from_iter;
 use rusqlite::{Connection, OpenFlags, params};
 use serde_json::{Map, Value};
+use std::collections::{HashMap, HashSet};
 use thiserror::Error;
+
+const SQLITE_PARAMETER_CHUNK_SIZE: usize = 900;
+const SQLITE_EPISODE_KEY_CHUNK_SIZE: usize = SQLITE_PARAMETER_CHUNK_SIZE / 3;
 
 const DATA_SCHEMA: &[(&str, &[&str])] = &[
     (
@@ -82,6 +87,17 @@ pub struct LegacyResourceRecord {
     pub downloaded_at: Option<String>,
     pub episode_name: Option<String>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LegacyEpisodeRelease {
+    pub fansub: Option<String>,
+    pub quality: Option<String>,
+    pub languages: Option<String>,
+    pub version: Option<i64>,
+}
+
+pub type LegacyEpisodeKey = (String, i64, i64);
+pub type LegacyEpisodeLookup = HashMap<LegacyEpisodeKey, Vec<LegacyEpisodeRelease>>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LegacyMementoRecord {
@@ -161,6 +177,89 @@ impl LegacyResourceStore {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(error) => Err(error.into()),
         }
+    }
+
+    pub fn find_existing_titles(
+        &self,
+        candidate_titles: &[String],
+    ) -> Result<HashSet<String>, LegacyStorageError> {
+        let mut seen = HashSet::new();
+        let unique_titles = candidate_titles
+            .iter()
+            .filter(|title| seen.insert(title.as_str()))
+            .collect::<Vec<_>>();
+        if unique_titles.is_empty() {
+            return Ok(HashSet::new());
+        }
+
+        let connection = open_readonly_database(&self.path, DATA_SCHEMA)?;
+        let mut found = HashSet::new();
+        for chunk in unique_titles.chunks(SQLITE_PARAMETER_CHUNK_SIZE) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let query = format!("SELECT title FROM resources WHERE title IN ({placeholders})");
+            let mut statement = connection.prepare(&query)?;
+            let titles = statement.query_map(params_from_iter(chunk.iter()), |row| {
+                row.get::<_, String>(0)
+            })?;
+            found.extend(titles.collect::<Result<Vec<_>, _>>()?);
+        }
+        Ok(found)
+    }
+
+    pub fn find_releases_by_episodes(
+        &self,
+        keys: &[LegacyEpisodeKey],
+    ) -> Result<LegacyEpisodeLookup, LegacyStorageError> {
+        let mut records = keys
+            .iter()
+            .cloned()
+            .map(|key| (key, Vec::new()))
+            .collect::<HashMap<_, _>>();
+        let mut seen = HashSet::new();
+        let unique_keys = keys
+            .iter()
+            .filter(|key| seen.insert((key.0.as_str(), key.1, key.2)))
+            .collect::<Vec<_>>();
+        if unique_keys.is_empty() {
+            return Ok(records);
+        }
+
+        let connection = open_readonly_database(&self.path, DATA_SCHEMA)?;
+        for chunk in unique_keys.chunks(SQLITE_EPISODE_KEY_CHUNK_SIZE) {
+            let clauses = ["(anime_name = ? AND season = ? AND episode = ?)"]
+                .repeat(chunk.len())
+                .join(" OR ");
+            let query = format!(
+                "SELECT anime_name, season, episode, fansub, quality, languages, version \
+                 FROM resources WHERE {clauses}"
+            );
+            let values = chunk
+                .iter()
+                .flat_map(|(name, season, episode)| {
+                    [
+                        rusqlite::types::Value::Text(name.clone()),
+                        rusqlite::types::Value::Integer(*season),
+                        rusqlite::types::Value::Integer(*episode),
+                    ]
+                })
+                .collect::<Vec<_>>();
+            let mut statement = connection.prepare(&query)?;
+            let rows = statement.query_map(params_from_iter(values), |row| {
+                let key = (row.get(0)?, row.get(1)?, row.get(2)?);
+                let release = LegacyEpisodeRelease {
+                    fansub: row.get(3)?,
+                    quality: row.get(4)?,
+                    languages: row.get(5)?,
+                    version: row.get(6)?,
+                };
+                Ok((key, release))
+            })?;
+            for row in rows {
+                let (key, release) = row?;
+                records.entry(key).or_default().push(release);
+            }
+        }
+        Ok(records)
     }
 }
 
