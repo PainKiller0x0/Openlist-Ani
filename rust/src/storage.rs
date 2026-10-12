@@ -4,8 +4,9 @@ use std::{
 };
 
 use rusqlite::params_from_iter;
-use rusqlite::{Connection, OpenFlags, params};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -105,6 +106,21 @@ pub struct LegacyMementoRecord {
     pub state: String,
     pub updated_at: String,
     pub payload_json: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SubmissionReservation {
+    Created(String),
+    Existing(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubmissionOperation {
+    pub task_id: String,
+    pub state: String,
+    pub provider_task_id: Option<String>,
+    pub updated_at: String,
+    pub last_error: Option<String>,
 }
 
 pub struct LegacyResourceStore {
@@ -575,6 +591,136 @@ impl LegacyTaskMementoStore {
         Ok(())
     }
 
+    pub fn reserve_submission(
+        &self,
+        record: &LegacyMementoRecord,
+        download_url: &str,
+    ) -> Result<SubmissionReservation, LegacyStorageError> {
+        let _: Map<String, Value> = serde_json::from_str(&record.payload_json)?;
+        let source_identity = format!("{:x}", Sha256::digest(download_url.as_bytes()));
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        ensure_submission_schema(&transaction)?;
+
+        let existing = transaction
+            .query_row(
+                "SELECT task_id FROM rust_download_operations \
+                 WHERE source_identity = ?1 AND state IN \
+                 ('intent', 'sending', 'uncertain', 'submitted')",
+                params![source_identity],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if let Some(task_id) = existing {
+            transaction.commit()?;
+            return Ok(SubmissionReservation::Existing(task_id));
+        }
+
+        transaction.execute(
+            "INSERT INTO task_mementos (task_id, state, updated_at, payload) \
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                record.task_id,
+                record.state,
+                record.updated_at,
+                record.payload_json,
+            ],
+        )?;
+        transaction.execute(
+            "INSERT INTO rust_download_operations \
+             (task_id, source_identity, state, updated_at) VALUES (?1, ?2, 'intent', ?3)",
+            params![record.task_id, source_identity, record.updated_at],
+        )?;
+        transaction.commit()?;
+        Ok(SubmissionReservation::Created(record.task_id.clone()))
+    }
+
+    pub fn begin_submission(&self, task_id: &str) -> Result<bool, LegacyStorageError> {
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction()?;
+        ensure_submission_schema(&transaction)?;
+        let changed = transaction.execute(
+            "UPDATE rust_download_operations SET state = 'sending' \
+             WHERE task_id = ?1 AND state = 'intent'",
+            params![task_id],
+        )?;
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
+    pub fn mark_submission_accepted(
+        &self,
+        task_id: &str,
+        provider_task_id: &str,
+        updated_at: &str,
+    ) -> Result<bool, LegacyStorageError> {
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction()?;
+        ensure_submission_schema(&transaction)?;
+        let changed = transaction.execute(
+            "UPDATE rust_download_operations SET state = 'submitted', \
+             provider_task_id = ?2, updated_at = ?3 \
+             WHERE task_id = ?1 AND state = 'sending'",
+            params![task_id, provider_task_id, updated_at],
+        )?;
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
+    pub fn mark_submission_uncertain(
+        &self,
+        task_id: &str,
+        error: &str,
+        updated_at: &str,
+    ) -> Result<bool, LegacyStorageError> {
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction()?;
+        ensure_submission_schema(&transaction)?;
+        let changed = transaction.execute(
+            "UPDATE rust_download_operations SET state = 'uncertain', \
+             last_error = ?2, updated_at = ?3 \
+             WHERE task_id = ?1 AND state = 'sending'",
+            params![task_id, error, updated_at],
+        )?;
+        transaction.commit()?;
+        Ok(changed == 1)
+    }
+
+    pub fn recover_interrupted_submissions(&self) -> Result<usize, LegacyStorageError> {
+        let mut connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        let transaction = connection.transaction()?;
+        ensure_submission_schema(&transaction)?;
+        let changed = transaction.execute(
+            "UPDATE rust_download_operations SET state = 'uncertain', \
+             last_error = COALESCE(last_error, 'process stopped during provider submission') \
+             WHERE state = 'sending'",
+            [],
+        )?;
+        transaction.commit()?;
+        Ok(changed)
+    }
+
+    pub fn load_submission_operations(
+        &self,
+    ) -> Result<Vec<SubmissionOperation>, LegacyStorageError> {
+        let connection = open_writable_database(&self.path, TASK_SCHEMA)?;
+        ensure_submission_schema(&connection)?;
+        let mut statement = connection.prepare(
+            "SELECT task_id, state, provider_task_id, updated_at, last_error \
+             FROM rust_download_operations ORDER BY updated_at, task_id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(SubmissionOperation {
+                task_id: row.get(0)?,
+                state: row.get(1)?,
+                provider_task_id: row.get(2)?,
+                updated_at: row.get(3)?,
+                last_error: row.get(4)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     pub fn delete(&self, task_id: &str) -> Result<(), LegacyStorageError> {
         let connection = open_writable_database(&self.path, TASK_SCHEMA)?;
         connection.execute(
@@ -583,6 +729,22 @@ impl LegacyTaskMementoStore {
         )?;
         Ok(())
     }
+}
+
+fn ensure_submission_schema(connection: &Connection) -> Result<(), rusqlite::Error> {
+    connection.execute_batch(
+        "CREATE TABLE IF NOT EXISTS rust_download_operations (
+            task_id TEXT PRIMARY KEY,
+            source_identity TEXT NOT NULL,
+            state TEXT NOT NULL,
+            provider_task_id TEXT,
+            updated_at TEXT NOT NULL,
+            last_error TEXT
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_rust_download_active_source \
+        ON rust_download_operations(source_identity) \
+        WHERE state IN ('intent', 'sending', 'uncertain', 'submitted');",
+    )
 }
 
 pub fn check_legacy_databases(paths: &LegacyDbPaths) -> Result<(), LegacyStorageError> {

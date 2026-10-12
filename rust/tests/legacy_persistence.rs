@@ -1,8 +1,11 @@
 use openlist_ani_rs::storage::{
     LegacyMementoRecord, LegacyResourceInput, LegacyResourceStore, LegacyTaskMementoStore,
+    SubmissionReservation,
 };
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Barrier};
+use std::thread;
 use tempfile::tempdir;
 
 fn create_legacy_data_db(path: &std::path::Path) {
@@ -160,6 +163,107 @@ fn memento_payload_unknown_fields_round_trip_and_terminal_save_deletes() {
     };
     store.save(&terminal).unwrap();
     assert_eq!(store.load_all().unwrap(), vec![failed, unknown_state]);
+}
+
+#[test]
+fn submission_intent_is_deduplicated_and_interrupted_send_becomes_uncertain() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("task_mementos.db");
+    create_legacy_task_db(&path);
+    let store = LegacyTaskMementoStore::new(&path);
+    let first = LegacyMementoRecord {
+        task_id: "task-1".into(),
+        state: "pending".into(),
+        updated_at: "2026-10-12T10:00:00".into(),
+        payload_json: r#"{"schema_version":1,"state":"pending"}"#.into(),
+    };
+
+    assert_eq!(
+        store
+            .reserve_submission(&first, "https://feed.test/download?id=secret")
+            .unwrap(),
+        SubmissionReservation::Created("task-1".into())
+    );
+    let duplicate = LegacyMementoRecord {
+        task_id: "task-2".into(),
+        ..first.clone()
+    };
+    assert_eq!(
+        store
+            .reserve_submission(&duplicate, "https://feed.test/download?id=secret")
+            .unwrap(),
+        SubmissionReservation::Existing("task-1".into())
+    );
+    assert!(store.begin_submission("task-1").unwrap());
+    assert!(!store.begin_submission("task-1").unwrap());
+    assert_eq!(store.recover_interrupted_submissions().unwrap(), 1);
+
+    let operations = store.load_submission_operations().unwrap();
+    assert_eq!(operations.len(), 1);
+    assert_eq!(operations[0].state, "uncertain");
+    assert_eq!(
+        operations[0].last_error.as_deref(),
+        Some("process stopped during provider submission")
+    );
+    assert_eq!(
+        store
+            .reserve_submission(&duplicate, "https://feed.test/download?id=secret")
+            .unwrap(),
+        SubmissionReservation::Existing("task-1".into())
+    );
+    assert!(
+        !store
+            .mark_submission_accepted("task-1", "remote-1", "2026-10-12T10:05:00")
+            .unwrap()
+    );
+}
+
+#[test]
+fn concurrent_submission_reservations_share_one_durable_task() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("task_mementos.db");
+    create_legacy_task_db(&path);
+    let barrier = Arc::new(Barrier::new(3));
+    let handles = (1..=2)
+        .map(|index| {
+            let path = path.clone();
+            let barrier = Arc::clone(&barrier);
+            thread::spawn(move || {
+                let record = LegacyMementoRecord {
+                    task_id: format!("task-{index}"),
+                    state: "pending".into(),
+                    updated_at: format!("2026-10-12T10:00:0{index}"),
+                    payload_json: r#"{"schema_version":1,"state":"pending"}"#.into(),
+                };
+                barrier.wait();
+                LegacyTaskMementoStore::new(path)
+                    .reserve_submission(&record, "https://feed.test/shared-release")
+                    .unwrap()
+            })
+        })
+        .collect::<Vec<_>>();
+    barrier.wait();
+    let results = handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, SubmissionReservation::Created(_)))
+            .count(),
+        1
+    );
+    let task_ids = results
+        .iter()
+        .map(|result| match result {
+            SubmissionReservation::Created(task_id) | SubmissionReservation::Existing(task_id) => {
+                task_id
+            }
+        })
+        .collect::<HashSet<_>>();
+    assert_eq!(task_ids.len(), 1);
 }
 
 #[test]
