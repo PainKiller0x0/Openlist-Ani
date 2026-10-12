@@ -1,0 +1,837 @@
+{
+  "note": "Includes request and response Pydantic models; expressions are design reference, not JSON Schema.",
+  "models": [
+    {
+      "name": "AddRSSRequest",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='RSS feed URL to monitor')"
+        },
+        {
+          "name": "name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200, description='Optional anime display name')"
+        },
+        {
+          "name": "anime_name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200, description='Optional download anime_name override')"
+        },
+        {
+          "name": "download_directory_name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200, description='Optional download directory name override')"
+        },
+        {
+          "name": "episode_offset",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=999, description='Subtract from parsed episode numbers for this RSS')"
+        },
+        {
+          "name": "filename_season_override",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=99)"
+        },
+        {
+          "name": "directory_season_override",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=99)"
+        },
+        {
+          "name": "tmdb_id",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, description='Optional TMDB TV show id')"
+        },
+        {
+          "name": "season",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, ge=0, le=99)"
+        },
+        {
+          "name": "exclude_patterns",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=2000, description='Pipe-separated title exclusion regex patterns')"
+        },
+        {
+          "name": "confirmed",
+          "type": "bool",
+          "defaultAndValidation": "Field(default=False, description='Whether the user confirmed the preview before saving')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 8
+    },
+    {
+      "name": "RSSPreviewRequest",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='RSS feed URL')"
+        },
+        {
+          "name": "name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200, description='Optional display name')"
+        },
+        {
+          "name": "anime_name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200, description='Optional download anime_name override')"
+        },
+        {
+          "name": "download_directory_name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200, description='Optional download directory name override')"
+        },
+        {
+          "name": "episode_offset",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=999, description='Subtract from parsed episode numbers for this RSS')"
+        },
+        {
+          "name": "filename_season_override",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=99)"
+        },
+        {
+          "name": "directory_season_override",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=99)"
+        },
+        {
+          "name": "exclude_patterns",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=2000, description='Pipe-separated title exclusions')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 31
+    },
+    {
+      "name": "GlobalRSSFilterRequest",
+      "fields": [
+        {
+          "name": "exclude_patterns",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=4000, description='Pipe-separated title exclusions')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 46
+    },
+    {
+      "name": "ToggleRSSRequest",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='RSS feed URL')"
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "defaultAndValidation": "Field(..., description='Whether the subscription should keep polling')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 54
+    },
+    {
+      "name": "SetRSSCompletedRequest",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='RSS feed URL')"
+        },
+        {
+          "name": "completed",
+          "type": "bool",
+          "defaultAndValidation": "Field(..., description='Whether the anime is completed')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 61
+    },
+    {
+      "name": "CorrectRSSRequest",
+      "fields": [
+        {
+          "name": "original_url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='Current persisted RSS URL')"
+        },
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='Corrected RSS URL')"
+        },
+        {
+          "name": "name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200)"
+        },
+        {
+          "name": "anime_name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200)"
+        },
+        {
+          "name": "download_directory_name",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=200)"
+        },
+        {
+          "name": "episode_offset",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=999)"
+        },
+        {
+          "name": "filename_season_override",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=99)"
+        },
+        {
+          "name": "directory_season_override",
+          "type": "int",
+          "defaultAndValidation": "Field(default=0, ge=0, le=99)"
+        },
+        {
+          "name": "tmdb_id",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None)"
+        },
+        {
+          "name": "season",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, ge=0, le=99)"
+        },
+        {
+          "name": "poster_url",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=1000)"
+        },
+        {
+          "name": "exclude_patterns",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=2000)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 68
+    },
+    {
+      "name": "UISettingsRequest",
+      "fields": [
+        {
+          "name": "global_exclude_patterns",
+          "type": "str",
+          "defaultAndValidation": "Field(default='', max_length=4000)"
+        },
+        {
+          "name": "openlist_url",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        },
+        {
+          "name": "llm_provider_type",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=50)"
+        },
+        {
+          "name": "llm_api_key",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=500)"
+        },
+        {
+          "name": "llm_base_url",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        },
+        {
+          "name": "llm_model",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=200)"
+        },
+        {
+          "name": "tmdb_language",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=30)"
+        },
+        {
+          "name": "metadata_parser_provider",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=50)"
+        },
+        {
+          "name": "download_path",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        },
+        {
+          "name": "rename_format",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        },
+        {
+          "name": "poll_interval_seconds",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, ge=60, le=86400)"
+        },
+        {
+          "name": "max_download_retries",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, ge=0, le=100)"
+        },
+        {
+          "name": "mikan_base_url",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 85
+    },
+    {
+      "name": "MikanSearchRequest",
+      "fields": [
+        {
+          "name": "keyword",
+          "type": "str",
+          "defaultAndValidation": "Field(..., min_length=1, max_length=200)"
+        },
+        {
+          "name": "base_url",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 103
+    },
+    {
+      "name": "MikanGroupsRequest",
+      "fields": [
+        {
+          "name": "bangumi_id",
+          "type": "int",
+          "defaultAndValidation": "Field(..., ge=1)"
+        },
+        {
+          "name": "base_url",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 110
+    },
+    {
+      "name": "MikanRSSRequest",
+      "fields": [
+        {
+          "name": "bangumi_id",
+          "type": "int",
+          "defaultAndValidation": "Field(..., ge=1)"
+        },
+        {
+          "name": "subgroup_id",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, ge=1)"
+        },
+        {
+          "name": "base_url",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, max_length=1000)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 117
+    },
+    {
+      "name": "RSSSubscriptionResponse",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "name",
+          "type": "str",
+          "defaultAndValidation": "''"
+        },
+        {
+          "name": "anime_name",
+          "type": "str",
+          "defaultAndValidation": "''"
+        },
+        {
+          "name": "download_directory_name",
+          "type": "str",
+          "defaultAndValidation": "''"
+        },
+        {
+          "name": "episode_offset",
+          "type": "int",
+          "defaultAndValidation": "0"
+        },
+        {
+          "name": "filename_season_override",
+          "type": "int",
+          "defaultAndValidation": "0"
+        },
+        {
+          "name": "directory_season_override",
+          "type": "int",
+          "defaultAndValidation": "0"
+        },
+        {
+          "name": "enabled",
+          "type": "bool",
+          "defaultAndValidation": "True"
+        },
+        {
+          "name": "completed",
+          "type": "bool",
+          "defaultAndValidation": "False"
+        },
+        {
+          "name": "tmdb_id",
+          "type": "int | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "poster_url",
+          "type": "str",
+          "defaultAndValidation": "''"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 125
+    },
+    {
+      "name": "AddRSSResponse",
+      "fields": [
+        {
+          "name": "success",
+          "type": "bool",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "message",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "urls",
+          "type": "list[str]",
+          "defaultAndValidation": "Field(default_factory=list, description='Current RSS URL list')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 139
+    },
+    {
+      "name": "CreateDownloadRequest",
+      "fields": [
+        {
+          "name": "download_url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='Download URL (magnet/torrent link)')"
+        },
+        {
+          "name": "title",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='Release title for identification')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 147
+    },
+    {
+      "name": "DownloadTaskResponse",
+      "fields": [
+        {
+          "name": "id",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "title",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "download_url",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "state",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "anime_name",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "season",
+          "type": "int | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "episode",
+          "type": "int | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "fansub",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "quality",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "progress",
+          "type": "float | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "error_message",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "retry_count",
+          "type": "int",
+          "defaultAndValidation": "0"
+        },
+        {
+          "name": "created_at",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "updated_at",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "started_at",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "completed_at",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "save_path",
+          "type": "str",
+          "defaultAndValidation": "''"
+        },
+        {
+          "name": "final_path",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 154
+    },
+    {
+      "name": "DownloadListResponse",
+      "fields": [
+        {
+          "name": "tasks",
+          "type": "list[DownloadTaskResponse]",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "total",
+          "type": "int",
+          "defaultAndValidation": null
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 177
+    },
+    {
+      "name": "CreateDownloadResponse",
+      "fields": [
+        {
+          "name": "success",
+          "type": "bool",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "message",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "task",
+          "type": "DownloadTaskResponse | None",
+          "defaultAndValidation": "None"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 184
+    },
+    {
+      "name": "RestartResponse",
+      "fields": [
+        {
+          "name": "success",
+          "type": "bool",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "message",
+          "type": "str",
+          "defaultAndValidation": null
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 192
+    },
+    {
+      "name": "ParseRSSRequest",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='RSS feed URL to parse')"
+        },
+        {
+          "name": "limit",
+          "type": "int | None",
+          "defaultAndValidation": "Field(default=None, description='Maximum number of entries to return (None = all)')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 202
+    },
+    {
+      "name": "ParseRSSEntry",
+      "fields": [
+        {
+          "name": "index",
+          "type": "int",
+          "defaultAndValidation": "Field(..., description='0-based position in the feed')"
+        },
+        {
+          "name": "title",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "download_url",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "anime_name",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "episode",
+          "type": "int | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "fansub",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "quality",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "languages",
+          "type": "list[str]",
+          "defaultAndValidation": "Field(default_factory=list)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 212
+    },
+    {
+      "name": "ParseRSSResponse",
+      "fields": [
+        {
+          "name": "success",
+          "type": "bool",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "message",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "total",
+          "type": "int",
+          "defaultAndValidation": "0"
+        },
+        {
+          "name": "entries",
+          "type": "list[ParseRSSEntry]",
+          "defaultAndValidation": "Field(default_factory=list)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 225
+    },
+    {
+      "name": "ResolveMagnetRequest",
+      "fields": [
+        {
+          "name": "magnet",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='Magnet URI (magnet:?xt=urn:btih:…)')"
+        },
+        {
+          "name": "metadata_timeout",
+          "type": "int",
+          "defaultAndValidation": "Field(default=30, description='libtorrent metadata fetch budget, in seconds')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 237
+    },
+    {
+      "name": "ResolveMagnetFile",
+      "fields": [
+        {
+          "name": "name",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "size",
+          "type": "int",
+          "defaultAndValidation": "0"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 247
+    },
+    {
+      "name": "ResolveMagnetResponse",
+      "fields": [
+        {
+          "name": "success",
+          "type": "bool",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "message",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "title",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "source",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, description=\"Where the title came from: 'dn' | 'metadata' | None\")"
+        },
+        {
+          "name": "file_count",
+          "type": "int | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "files",
+          "type": "list[ResolveMagnetFile]",
+          "defaultAndValidation": "Field(default_factory=list)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 254
+    },
+    {
+      "name": "ResolveTorrentRequest",
+      "fields": [
+        {
+          "name": "url",
+          "type": "str",
+          "defaultAndValidation": "Field(..., description='HTTP(S) URL to a .torrent file')"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 276
+    },
+    {
+      "name": "ResolveTorrentResponse",
+      "fields": [
+        {
+          "name": "success",
+          "type": "bool",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "message",
+          "type": "str",
+          "defaultAndValidation": null
+        },
+        {
+          "name": "title",
+          "type": "str | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "source",
+          "type": "str | None",
+          "defaultAndValidation": "Field(default=None, description=\"Where the title came from: 'torrent_file' | None\")"
+        },
+        {
+          "name": "file_count",
+          "type": "int | None",
+          "defaultAndValidation": "None"
+        },
+        {
+          "name": "files",
+          "type": "list[ResolveMagnetFile]",
+          "defaultAndValidation": "Field(default_factory=list)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/schema.py",
+      "line": 282
+    },
+    {
+      "name": "LoginRequest",
+      "fields": [
+        {
+          "name": "username",
+          "type": "str",
+          "defaultAndValidation": "Field(min_length=1, max_length=100)"
+        },
+        {
+          "name": "password",
+          "type": "str",
+          "defaultAndValidation": "Field(min_length=1, max_length=500)"
+        }
+      ],
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 60
+    }
+  ]
+}

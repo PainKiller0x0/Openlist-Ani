@@ -1,0 +1,76 @@
+# Synthetic fixture only: never deploy this over the user's configuration.
+# Harness replaces stub ports/endpoints in a temporary copy before starting.
+[openlist]
+url = "http://127.0.0.1:19001"
+token = "synthetic-secret-marker"
+download_path = "/迅雷/videos/番"
+offline_download_tool = "Thunder"
+rename_format = "{anime_name} - S{season:02d}E{episode:02d}"
+
+[rss]
+urls = ["http://127.0.0.1:19002/jojo.xml", "http://127.0.0.1:19002/wildboss.xml"]
+interval_time = 300
+max_download_retries = 3
+
+[[rss.subscriptions]]
+url = "http://127.0.0.1:19002/jojo.xml"
+name = "JOJO的奇妙冒险 (2012)"
+anime_name = "套马的汉子"
+download_directory_name = "JOJO的奇妙冒险 (2012)"
+season = 8
+filename_season_override = 1
+directory_season_override = 6
+episode_offset = 0
+enabled = true
+completed = false
+tmdb_id = 12345
+poster_url = "http://127.0.0.1:19002/poster.jpg"
+exclude_patterns = []
+
+[[rss.subscriptions]]
+url = "http://127.0.0.1:19002/wildboss.xml"
+name = "野生的大魔王出现了！ (2025)"
+anime_name = "野生的大魔王出现了！ (2025)"
+download_directory_name = "野生的大魔王出现了！ (2025)"
+season = 2
+episode_offset = 12
+filename_season_override = 0
+directory_season_override = 0
+enabled = true
+completed = false
+exclude_patterns = []
+
+[llm]
+provider_type = "openai"
+openai_api_key = "synthetic-api-key-marker"
+openai_base_url = "http://127.0.0.1:19003/v1"
+openai_model = "synthetic-model"
+tmdb_api_key = "synthetic-tmdb-marker"
+tmdb_language = "zh-CN"
+
+[metadata_parser]
+provider = "llm"
+[metadata_validator]
+provider = "tmdb"
+[backend]
+host = "127.0.0.1"
+port = 19004
+[mikan]
+base_url = "http://127.0.0.1:19002/"
+
+[smartstrm]
+enabled = true
+trigger_url = "http://127.0.0.1:19005/trigger"
+timeout_seconds = 2.0
+
+# Approved unused modules remain in the config; Rust must not instantiate them.
+[assistant]
+enabled = false
+data_dir = "data/assistant"
+[notification]
+enabled = false
+batch_interval = 300
+
+# Preservation sentinel: this section is intentionally unknown to Rust.
+[unknown_legacy_section]
+opaque_setting = "do-not-delete"

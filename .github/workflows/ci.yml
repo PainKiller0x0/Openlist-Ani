@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - master
+      - rust
   push:
     branches:
       - "**"
@@ -59,6 +60,28 @@ jobs:
 
       - name: Run tests
         run: uv run --frozen pytest -q
+
+  rust:
+    name: Rust / Format, Test, Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+
+      - name: Install Rust 1.85 toolchain
+        run: rustup toolchain install 1.85 --profile minimal --component rustfmt --component clippy
+
+      - name: Check formatting
+        working-directory: rust
+        run: cargo +1.85 fmt --all -- --check
+
+      - name: Run Rust tests
+        working-directory: rust
+        run: cargo +1.85 test --locked
+
+      - name: Run Clippy
+        working-directory: rust
+        run: cargo +1.85 clippy --locked --all-targets -- -D warnings
 
   build:
     name: CI / Build

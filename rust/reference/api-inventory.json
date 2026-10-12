@@ -1,0 +1,505 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "handler": "index",
+      "source": "openlist_ani/adapters/inbound/http/app.py",
+      "line": 69,
+      "arguments": [],
+      "returnAnnotation": "HTMLResponse",
+      "doc": "Serve the user-facing RSS/torrent entry point."
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "handler": "auth_login",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 72,
+      "arguments": [
+        {
+          "name": "payload",
+          "type": "LoginRequest"
+        },
+        {
+          "name": "request",
+          "type": "Request"
+        },
+        {
+          "name": "response",
+          "type": "Response"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "handler": "auth_logout",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 93,
+      "arguments": [
+        {
+          "name": "response",
+          "type": "Response"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/session",
+      "handler": "auth_session",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 66,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "Request"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/downloads",
+      "handler": "list_downloads",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 594,
+      "arguments": [],
+      "returnAnnotation": "DownloadListResponse",
+      "doc": "Get all active download tasks."
+    },
+    {
+      "method": "POST",
+      "path": "/api/downloads",
+      "handler": "create_download",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 583,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "CreateDownloadRequest"
+        }
+      ],
+      "returnAnnotation": "CreateDownloadResponse",
+      "doc": "Create a new download task."
+    },
+    {
+      "method": "GET",
+      "path": "/api/downloads/{task_id}",
+      "handler": "get_download",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 605,
+      "arguments": [
+        {
+          "name": "task_id",
+          "type": "str"
+        }
+      ],
+      "returnAnnotation": "DownloadTaskResponse",
+      "doc": "Get a specific download task's status and progress."
+    },
+    {
+      "method": "POST",
+      "path": "/api/parse_rss",
+      "handler": "parse_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 641,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "ParseRSSRequest"
+        }
+      ],
+      "returnAnnotation": "ParseRSSResponse",
+      "doc": "Parse an RSS feed and return its release entries.\n\nReturns raw, un-enriched entries (title, download_url, fansub, etc.).\nThe caller (assistant) decides which entries to enqueue via\n``/api/downloads``."
+    },
+    {
+      "method": "POST",
+      "path": "/api/resolve_magnet",
+      "handler": "resolve_magnet",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 653,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "ResolveMagnetRequest"
+        }
+      ],
+      "returnAnnotation": "ResolveMagnetResponse",
+      "doc": "Resolve a magnet URI to its real title and file list.\n\nOrder of operations: ``dn=`` parameter → libtorrent metadata\n(DHT/peers, bounded by ``metadata_timeout``).  Detects collection\nreleases via title-keyword matching so callers can refuse them."
+    },
+    {
+      "method": "POST",
+      "path": "/api/resolve_torrent",
+      "handler": "resolve_torrent",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 667,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "ResolveTorrentRequest"
+        }
+      ],
+      "returnAnnotation": "ResolveTorrentResponse",
+      "doc": "Resolve a .torrent file URL to its real title and file list.\n\nDownloads the .torrent via HTTP(S) (size- and time-bounded), then\nparses the blob with libtorrent.  Mirrors ``/api/resolve_magnet``'s\nresponse shape so callers can share the same downstream pipeline."
+    },
+    {
+      "method": "POST",
+      "path": "/api/restart",
+      "handler": "restart_service",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 565,
+      "arguments": [],
+      "returnAnnotation": "RestartResponse",
+      "doc": "Restart the application by sending SIGHUP to self."
+    },
+    {
+      "method": "POST",
+      "path": "/api/rss",
+      "handler": "add_rss_url",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 575,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "AddRSSRequest"
+        }
+      ],
+      "returnAnnotation": "AddRSSResponse",
+      "doc": "Add a new RSS monitoring URL."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/downloads/{task_id}/archive",
+      "handler": "ui_archive_failed_download",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 630,
+      "arguments": [
+        {
+          "name": "task_id",
+          "type": "str"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "Hide one failed task while keeping its durable history."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/downloads/{task_id}/retry",
+      "handler": "ui_retry_download",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 615,
+      "arguments": [
+        {
+          "name": "task_id",
+          "type": "str"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "Manually retry a failed download using a fresh OpenList task."
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/logs",
+      "handler": "ui_logs",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 162,
+      "arguments": [
+        {
+          "name": "limit",
+          "type": "int",
+          "defaultExpression": "300"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "Return a bounded tail of sanitized OpenList-Ani runtime logs."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/mikan/groups",
+      "handler": "ui_mikan_groups",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 292,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "MikanGroupsRequest"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "List subtitle groups for a selected Mikan bangumi."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/mikan/rss",
+      "handler": "ui_mikan_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 312,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "MikanRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "Build a group-specific RSS URL for the existing add/preview flow."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/mikan/search",
+      "handler": "ui_mikan_search",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 275,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "MikanSearchRequest"
+        }
+      ],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "Search the configured Mikan-compatible site from the web UI."
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/ui/rss",
+      "handler": "ui_remove_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 496,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "AddRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Remove an RSS source and stop monitoring it immediately."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss",
+      "handler": "ui_add_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 334,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "AddRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Validate, persist and activate a new RSS subscription."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/completed",
+      "handler": "ui_set_rss_completed",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 426,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "SetRSSCompletedRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Mark an anime completed or resume its RSS tracking."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/correct",
+      "handler": "ui_correct_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 458,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "CorrectRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Correct an existing RSS URL and its metadata in one operation."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/exclude",
+      "handler": "ui_update_rss_exclude",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 440,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "AddRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Update only one subscription's title exclusions."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/filter",
+      "handler": "ui_update_global_rss_filter",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 407,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "GlobalRSSFilterRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Update the global RSS title exclusion list."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/metadata",
+      "handler": "ui_refresh_rss_metadata",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 481,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "AddRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Re-identify an existing RSS subscription and persist its metadata."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/preview",
+      "handler": "ui_preview_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 385,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "RSSPreviewRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Fetch and identify an RSS without saving it."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/remove",
+      "handler": "ui_remove_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 496,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "AddRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Remove an RSS source and stop monitoring it immediately."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/rss/toggle",
+      "handler": "ui_toggle_rss",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 414,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "ToggleRSSRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Pause or resume a persisted RSS subscription without deleting it."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/scan",
+      "handler": "ui_scan_now",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 327,
+      "arguments": [],
+      "returnAnnotation": "dict[str, object]",
+      "doc": "Run the RSS scanner immediately instead of waiting for its timer."
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/settings",
+      "handler": "ui_settings",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 140,
+      "arguments": [],
+      "returnAnnotation": "dict",
+      "doc": "Return settings safe for the browser settings dialog."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/settings",
+      "handler": "ui_update_settings",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 172,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "UISettingsRequest"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Persist global filters and LLM settings from the browser dialog."
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/state",
+      "handler": "ui_state",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 113,
+      "arguments": [],
+      "returnAnnotation": "dict",
+      "doc": "Return only the UI-safe runtime state needed by the built-in page."
+    },
+    {
+      "method": "POST",
+      "path": "/api/ui/torrent",
+      "handler": "ui_upload_torrent",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 518,
+      "arguments": [
+        {
+          "name": "request",
+          "type": "Request"
+        }
+      ],
+      "returnAnnotation": "dict",
+      "doc": "Upload a torrent, resolve its title, and start the OpenList task."
+    },
+    {
+      "method": "GET",
+      "path": "/api/ui/uploads/{filename}",
+      "handler": "serve_uploaded_torrent",
+      "source": "openlist_ani/adapters/inbound/http/router.py",
+      "line": 506,
+      "arguments": [
+        {
+          "name": "filename",
+          "type": "str"
+        }
+      ],
+      "returnAnnotation": "FileResponse",
+      "doc": "Serve an uploaded torrent to OpenList on the same machine."
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "handler": "login_page",
+      "source": "openlist_ani/adapters/inbound/http/app.py",
+      "line": 62,
+      "arguments": [],
+      "returnAnnotation": "HTMLResponse",
+      "doc": null
+    }
+  ],
+  "staticMount": "/assets",
+  "allListedRoutesMustHaveImplementationAndContractTests": true
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>Synthetic Clevatess Season Identity Regression Feed</title>
+<link>https://feed.example.test/clevatess</link>
+<description>Fixture declares S02E13 explicitly to test season/count cache isolation.</description>
+<item><guid>synthetic-clevatess-S02E13</guid><title>[Test] Clevatess II S02E13 [1080p]</title><enclosure url="http://127.0.0.1:19002/clevatess-13.torrent" type="application/x-bittorrent" length="128"/></item>
+</channel></rss>

@@ -31,3 +31,8 @@ data/
 .codex
 .agents/
 .claude/
+
+# Rust migration crate
+!rust/Cargo.toml
+!rust/fixtures/config.synthetic.toml
+rust/target/

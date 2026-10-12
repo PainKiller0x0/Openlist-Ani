@@ -1,0 +1,12 @@
+{
+  "syntheticOnly": true,
+  "username": "synthetic-user",
+  "password": "synthetic-only-password",
+  "secret": "synthetic-op-ani-secret",
+  "iterations": 100000,
+  "saltBase64url": "AAECAwQFBgcICQoLDA0ODw",
+  "passwordHash": "pbkdf2_sha256$100000$AAECAwQFBgcICQoLDA0ODw$B9S5dzMIVMqrG88tNgGMbPWbVtRsKSm2Rh7P-mobAZo",
+  "frozenNowUnix": 1791774000,
+  "expiresAt": 1794366000,
+  "legacyToken": "synthetic-user|1794366000|synthetic-fixed-nonce.c_Uq-ChgSu3e2Ir33CsIoai-gIaJTYIt2gQ9aK7_6_I"
+}

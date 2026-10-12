@@ -1,0 +1,41 @@
+{
+  "syntheticOnly": true,
+  "search": {
+    "results": [
+      {
+        "id": 336654,
+        "name": "错误候选",
+        "original_name": "Similar romanized title",
+        "first_air_date": "2026-01-01",
+        "genre_ids": [
+          16
+        ],
+        "poster_path": "/wrong.jpg"
+      },
+      {
+        "id": 283938,
+        "name": "学生会也有洞",
+        "original_name": "Seitokai ni mo Ana wa Aru",
+        "first_air_date": "2026-01-01",
+        "genre_ids": [
+          16
+        ],
+        "poster_path": "/correct.jpg"
+      }
+    ]
+  },
+  "pinnedDetails": {
+    "id": 283938,
+    "name": "学生会也有洞",
+    "original_name": "Seitokai ni mo Ana wa Aru",
+    "first_air_date": "2026-01-01",
+    "poster_path": "/correct.jpg",
+    "seasons": [
+      {
+        "season_number": 1,
+        "episode_count": 12
+      }
+    ]
+  },
+  "note": "Synthetic regression data; do not hardcode these titles/dates/posters into production."
+}

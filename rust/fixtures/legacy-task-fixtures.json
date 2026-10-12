@@ -1,0 +1,442 @@
+{
+  "syntheticOnly": true,
+  "note": "Shape/checkpoint fixtures, not recorded production rows. Stub final files must be planned/renamed after legacy materialization; preserve existing payload and do not fabricate unknown fields.",
+  "cases": [
+    {
+      "phase": "init",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000001",
+        "state": "pending",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "init",
+            "synthetic_unknown_field_to_preserve": "keep"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "submitted",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000002",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "submitted",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000002",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000002",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "download_done",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000003",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "download_done",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000003",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000003",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "transfer_done",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000004",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "transfer_done",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000004",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000004",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "file_detected",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000005",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "file_detected",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000005",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000005",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+            "downloaded_directory_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000005",
+            "downloaded_filename": "synthetic.mp4"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "file_resolved",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000006",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "file_resolved",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000006",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000006",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+            "downloaded_directory_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000006",
+            "downloaded_filename": "synthetic.mp4",
+            "resolved_filename": "synthetic.mp4"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "moved",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000007",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "moved",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000007",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000007",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+            "downloaded_directory_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000007",
+            "downloaded_filename": "synthetic.mp4",
+            "resolved_filename": "synthetic.mp4",
+            "materialized_directory_path": "/迅雷/videos/番/JOJO的奇妙冒险 (2012)/Season 6",
+            "materialized_filename": "synthetic.mp4"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    },
+    {
+      "phase": "done",
+      "task": {
+        "task_id": "00000000-0000-4000-8000-000000000008",
+        "state": "downloading",
+        "release": {
+          "title": "synthetic source title",
+          "download_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+          "source_url": "https://feed.example.test/rss",
+          "anime_name_override": "套马的汉子",
+          "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+          "episode_offset": 12,
+          "anime_name": "套马的汉子",
+          "season": 8,
+          "filename_season_override": 1,
+          "directory_season_override": 6,
+          "episode": 3,
+          "fansub": null,
+          "quality": null,
+          "languages": [],
+          "version": 1
+        },
+        "base_path": "/迅雷/videos/番",
+        "downloader": {
+          "downloader_type": "openlist",
+          "payload": {
+            "workflow_state": "done",
+            "synthetic_unknown_field_to_preserve": "keep",
+            "task_id": "remote-00000000-0000-4000-8000-000000000008",
+            "temp_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000008",
+            "submitted_url": "magnet:?xt=urn:btih:1111111111111111111111111111111111111111&dn=synthetic",
+            "downloaded_directory_path": "/迅雷/videos/番/.oani-download-tmp/00000000-0000-4000-8000-000000000008",
+            "downloaded_filename": "synthetic.mp4",
+            "resolved_filename": "synthetic.mp4",
+            "materialized_directory_path": "/迅雷/videos/番/JOJO的奇妙冒险 (2012)/Season 6",
+            "materialized_filename": "synthetic.mp4"
+          }
+        },
+        "pipeline": {
+          "next_buffer": "download",
+          "downloaded_directory_path": null,
+          "downloaded_filename": null,
+          "renamed_path": null
+        },
+        "retry": {
+          "retry_count": 0,
+          "max_retries": 3,
+          "last_error": null
+        },
+        "output_path": null,
+        "created_at": "2026-10-12T11:00:00",
+        "updated_at": "2026-10-12T11:00:00",
+        "started_at": null,
+        "completed_at": null,
+        "schema_version": 1,
+        "archived": false
+      }
+    }
+  ]
+}

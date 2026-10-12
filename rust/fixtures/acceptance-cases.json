@@ -1,0 +1,3711 @@
+{
+  "schemaVersion": 1,
+  "generatedDate": "2026-10-12",
+  "isProductTestResult": false,
+  "instruction": "Implement each ID as executable assertions; merely reading this matrix or validating JSON does not execute product tests.",
+  "cases": [
+    {
+      "id": "NAME-01",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "基础格式",
+      "given": {
+        "anime_name": "示例番剧 (2026)",
+        "season": 1,
+        "episode": 3,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "示例番剧 (2026) - S01E03.mp4",
+        "directory": "/迅雷/videos/番/示例番剧 (2026)/Season 1"
+      }
+    },
+    {
+      "id": "NAME-02",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "JOJO身份和输出彻底分离",
+      "given": {
+        "anime_name": "JOJO的奇妙冒险 (2012)",
+        "anime_name_override": "套马的汉子",
+        "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+        "season": 8,
+        "episode": 3,
+        "filename_season_override": 1,
+        "directory_season_override": 6,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "套马的汉子 - S01E03.mp4",
+        "directory": "/迅雷/videos/番/JOJO的奇妙冒险 (2012)/Season 6",
+        "identity_season": 8,
+        "episode": 3
+      }
+    },
+    {
+      "id": "NAME-03",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "只覆盖目录",
+      "given": {
+        "anime_name": "甲",
+        "season": 2,
+        "episode": 15,
+        "directory_season_override": 7,
+        "extension": ".mkv"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "甲 - S02E15.mkv",
+        "directory": "/迅雷/videos/番/甲/Season 7",
+        "identity_season": 2
+      }
+    },
+    {
+      "id": "NAME-04",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "只覆盖文件季号",
+      "given": {
+        "anime_name": "乙",
+        "season": 6,
+        "episode": 1,
+        "filename_season_override": 1,
+        "extension": ".mkv"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "乙 - S01E01.mkv",
+        "directory": "/迅雷/videos/番/乙/Season 6"
+      }
+    },
+    {
+      "id": "NAME-05",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "zero override为未设置",
+      "given": {
+        "anime_name": "丙",
+        "season": 2,
+        "episode": 4,
+        "filename_season_override": 0,
+        "directory_season_override": 0,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "丙 - S02E04.mp4",
+        "directory": "/迅雷/videos/番/丙/Season 2"
+      }
+    },
+    {
+      "id": "NAME-06",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "S00不得改成S01",
+      "given": {
+        "anime_name": "特别篇",
+        "season": 0,
+        "episode": 1,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "特别篇 - S00E01.mp4",
+        "directory": "/迅雷/videos/番/特别篇/Season 0"
+      }
+    },
+    {
+      "id": "NAME-07",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "版本后缀",
+      "given": {
+        "anime_name": "重制",
+        "season": 1,
+        "episode": 2,
+        "version": 2,
+        "extension": ".mkv"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "重制 - S01E02 v2.mkv",
+        "directory": "/迅雷/videos/番/重制/Season 1"
+      }
+    },
+    {
+      "id": "NAME-08",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "大于两位集数不截断",
+      "given": {
+        "anime_name": "长篇",
+        "season": 1,
+        "episode": 123,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "长篇 - S01E123.mp4",
+        "directory": "/迅雷/videos/番/长篇/Season 1"
+      }
+    },
+    {
+      "id": "NAME-09",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "标题非法字符净化",
+      "given": {
+        "anime_name": "A:B/C",
+        "season": 1,
+        "episode": 1,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "A B C - S01E01.mp4",
+        "directory": "/迅雷/videos/番/A B C/Season 1"
+      }
+    },
+    {
+      "id": "NAME-10",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "空集数不能默认为1",
+      "given": {
+        "anime_name": "无集数",
+        "season": 1,
+        "episode": null,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "error": "missing_episode",
+        "submitCount": 0
+      }
+    },
+    {
+      "id": "NAME-11",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "目录逃逸",
+      "given": {
+        "anime_name": "安全",
+        "download_directory_name_override": "..",
+        "season": 1,
+        "episode": 1,
+        "extension": ".mp4"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "error": "unsafe_directory_component",
+        "submitCount": 0
+      }
+    },
+    {
+      "id": "NAME-12",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "模板宽度",
+      "given": {
+        "anime_name": "模板",
+        "season": 2,
+        "episode": 7,
+        "extension": ".mkv",
+        "rename_format": "{anime_name} [{season:02d}x{episode:03d}]"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "filename": "模板 [02x007].mkv",
+        "directory": "/迅雷/videos/番/模板/Season 2"
+      }
+    },
+    {
+      "id": "NAME-13",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "模板未知字段拒绝保存",
+      "given": {
+        "anime_name": "模板",
+        "season": 2,
+        "episode": 7,
+        "extension": ".mp4",
+        "rename_format": "{unknown}"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "error": "invalid_rename_format",
+        "persistedConfigChanged": false
+      }
+    },
+    {
+      "id": "NAME-14",
+      "priority": "P0",
+      "layer": "unit+workflow",
+      "title": "模板不可输出分隔符",
+      "given": {
+        "anime_name": "模板",
+        "season": 2,
+        "episode": 7,
+        "extension": ".mp4",
+        "rename_format": "{anime_name}/{episode}"
+      },
+      "action": "build plan; for success run mocked download and compare preview/final_path",
+      "expected": {
+        "error": "unsafe_rename_format",
+        "persistedConfigChanged": false
+      }
+    },
+    {
+      "id": "EP-13",
+      "priority": "P0",
+      "layer": "unit+recovery",
+      "title": "累计集数只扣一次",
+      "given": {
+        "raw_episode": 13,
+        "offset": 12,
+        "season": 2
+      },
+      "action": "parse -> validate -> preview -> persist -> restart -> retry",
+      "expected": {
+        "episode": 1,
+        "identity_season": 2,
+        "offsetApplyCount": 1
+      }
+    },
+    {
+      "id": "EP-14",
+      "priority": "P0",
+      "layer": "unit+recovery",
+      "title": "累计集数只扣一次",
+      "given": {
+        "raw_episode": 14,
+        "offset": 12,
+        "season": 2
+      },
+      "action": "parse -> validate -> preview -> persist -> restart -> retry",
+      "expected": {
+        "episode": 2,
+        "identity_season": 2,
+        "offsetApplyCount": 1
+      }
+    },
+    {
+      "id": "EP-15",
+      "priority": "P0",
+      "layer": "unit+recovery",
+      "title": "累计集数只扣一次",
+      "given": {
+        "raw_episode": 15,
+        "offset": 12,
+        "season": 2
+      },
+      "action": "parse -> validate -> preview -> persist -> restart -> retry",
+      "expected": {
+        "episode": 3,
+        "identity_season": 2,
+        "offsetApplyCount": 1
+      }
+    },
+    {
+      "id": "EP-INVALID",
+      "priority": "P0",
+      "layer": "unit",
+      "title": "扣除后非正数",
+      "given": {
+        "raw_episode": 12,
+        "offset": 12
+      },
+      "action": "build plan",
+      "expected": {
+        "accepted": false,
+        "submitCount": 0
+      }
+    },
+    {
+      "id": "EP-SPECIAL",
+      "priority": "P0",
+      "layer": "parser",
+      "title": "12.5原始特殊集规则",
+      "given": {
+        "title": "[Test] Anime - 12.5 [1080p]"
+      },
+      "action": "parse regex corpus then plan",
+      "expected": {
+        "season": 0,
+        "episode": 1,
+        "filenameContains": "S00E01"
+      }
+    },
+    {
+      "id": "EP-RANGE",
+      "priority": "P0",
+      "layer": "parser",
+      "title": "集数范围不当作单集",
+      "given": {
+        "title": "[Test] Anime - 01-12 [1080p]"
+      },
+      "action": "single-episode parse",
+      "expected": {
+        "acceptedAsSingleEpisode": false
+      }
+    },
+    {
+      "id": "EP-CJK",
+      "priority": "P0",
+      "layer": "parser",
+      "title": "Unicode标题和中文季集数",
+      "given": {
+        "title": "测试动画 第二季 第三集",
+        "authoritativeMetadata": {
+          "season": 2,
+          "episode": 3
+        }
+      },
+      "action": "ordered regex rules",
+      "expected": {
+        "season": 2,
+        "episode": 3,
+        "anime_name": "测试动画"
+      }
+    },
+    {
+      "id": "EP-VERSION",
+      "priority": "P0",
+      "layer": "parser+dedupe",
+      "title": "更高version不被旧版本挡掉",
+      "given": {
+        "existing": {
+          "season": 1,
+          "episode": 2,
+          "version": 1
+        },
+        "incoming": {
+          "season": 1,
+          "episode": 2,
+          "version": 2
+        }
+      },
+      "action": "scan twice",
+      "expected": {
+        "newTasks": 1,
+        "version": 2
+      }
+    },
+    {
+      "id": "RSS-01",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "暂停和完结都不扫描",
+      "given": {
+        "sources": [
+          {
+            "enabled": true,
+            "completed": false
+          },
+          {
+            "enabled": false,
+            "completed": false
+          },
+          {
+            "enabled": true,
+            "completed": true
+          }
+        ]
+      },
+      "action": "scheduled scan",
+      "expected": {
+        "fetchedSourceIndexes": [
+          0
+        ]
+      }
+    },
+    {
+      "id": "RSS-02",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "单源错误不拖累其它",
+      "given": {
+        "sources": [
+          "valid.xml",
+          "timeout",
+          "malformed.xml",
+          "valid2.xml"
+        ]
+      },
+      "action": "scan all",
+      "expected": {
+        "successfulSources": 2,
+        "errorsVisible": true,
+        "serviceAlive": true
+      }
+    },
+    {
+      "id": "RSS-03",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "预览不产生副作用",
+      "given": {
+        "fixture": "rss-wildboss.xml"
+      },
+      "action": "POST /api/ui/rss/preview",
+      "expected": {
+        "configWrites": 0,
+        "taskWrites": 0,
+        "resourceWrites": 0,
+        "remoteMutations": 0
+      }
+    },
+    {
+      "id": "RSS-04",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "未确认不保存",
+      "given": {
+        "confirmed": false
+      },
+      "action": "POST /api/ui/rss",
+      "expected": {
+        "subscriptionsAdded": 0,
+        "remoteMutations": 0
+      }
+    },
+    {
+      "id": "RSS-05",
+      "priority": "P0",
+      "layer": "concurrency",
+      "title": "确认双击幂等",
+      "given": {
+        "identicalConfirmedRequests": 2
+      },
+      "action": "concurrent POST /api/ui/rss",
+      "expected": {
+        "subscriptionsAdded": 1,
+        "tasksPerRelease": 1
+      }
+    },
+    {
+      "id": "RSS-06",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "扫描入口合并",
+      "given": {
+        "activeScan": true,
+        "immediateRequests": 10
+      },
+      "action": "POST /api/ui/scan concurrently",
+      "expected": {
+        "maxConcurrentScans": 1,
+        "unboundedQueuedScans": false
+      }
+    },
+    {
+      "id": "RSS-07",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "已入库两集只下第三集",
+      "given": {
+        "fixture": "rss-wildboss.xml",
+        "storedLogicalEpisodes": [
+          1,
+          2
+        ],
+        "offset": 12
+      },
+      "action": "two scans",
+      "expected": {
+        "tasksCreated": 1,
+        "taskEpisode": 3,
+        "latestAfterCompletion": 3
+      }
+    },
+    {
+      "id": "RSS-08",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "全局/单源排除提前应用",
+      "given": {
+        "titles": [
+          "accept",
+          "AD skip",
+          "single skip"
+        ],
+        "patterns": [
+          "AD",
+          "single"
+        ]
+      },
+      "action": "scan",
+      "expected": {
+        "accepted": [
+          "accept"
+        ],
+        "llmCallsForRejected": 0
+      }
+    },
+    {
+      "id": "RSS-09",
+      "priority": "P0",
+      "layer": "config+parser",
+      "title": "不兼容/非法regex不可静默清空",
+      "given": {
+        "exclusionPattern": "("
+      },
+      "action": "save then migrate preflight",
+      "expected": {
+        "rejected": true,
+        "existingPatternsPreserved": true
+      }
+    },
+    {
+      "id": "RSS-10",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "URL查询参数不丢字幕组",
+      "given": {
+        "url": "https://mikanani.kas.pub/RSS/Bangumi?bangumiId=4064&subgroupid=583"
+      },
+      "action": "save,fetch,restart",
+      "expected": {
+        "subgroupid": "583",
+        "pathCasePreserved": true
+      }
+    },
+    {
+      "id": "RSS-11",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "enclosure优先和失败条目隔离",
+      "given": {
+        "feedWithEnclosureAndPageLink": true,
+        "invalidEntries": 1
+      },
+      "action": "parse",
+      "expected": {
+        "mediaLinkUsesEnclosure": true,
+        "invalidEntryDoesNotAbortFeed": true
+      }
+    },
+    {
+      "id": "RSS-12",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "已有URL改成另一个已有URL",
+      "given": {
+        "subscriptions": [
+          "u1",
+          "u2"
+        ]
+      },
+      "action": "correct u1 -> u2",
+      "expected": {
+        "status": 409,
+        "bothSubscriptionsUnchanged": true
+      }
+    },
+    {
+      "id": "RSS-13",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "规则修改撤销旧拒绝缓存",
+      "given": {
+        "oldStrictRejection": true,
+        "newConfigRevision": 2
+      },
+      "action": "correct then rescan",
+      "expected": {
+        "reevaluated": true,
+        "tasksPerRelease": 1
+      }
+    },
+    {
+      "id": "RSS-14",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "删除不是删除视频",
+      "given": {
+        "subscriptionHasFiles": true
+      },
+      "action": "remove subscription",
+      "expected": {
+        "subscriptionRemoved": true,
+        "remoteFileDeleteCount": 0
+      }
+    },
+    {
+      "id": "RSS-15",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "恢复完结订阅不重下旧集",
+      "given": {
+        "completed": true,
+        "storedEpisodes": [
+          1,
+          2,
+          3
+        ]
+      },
+      "action": "completed=false then scan",
+      "expected": {
+        "enabled": true,
+        "completed": false,
+        "oldEpisodeSubmissions": 0
+      }
+    },
+    {
+      "id": "META-01",
+      "priority": "P0",
+      "layer": "adapter+integration",
+      "title": "手工TMDB ID高于搜索排序",
+      "given": {
+        "fixture": "tmdb-candidates.json",
+        "pinnedId": 283938
+      },
+      "action": "identify and refresh",
+      "expected": {
+        "tmdb_id": 283938,
+        "posterFromId": 283938,
+        "titleFromId": 283938
+      }
+    },
+    {
+      "id": "META-02",
+      "priority": "P0",
+      "layer": "adapter+integration",
+      "title": "模糊搜索不选第一项",
+      "given": {
+        "candidatesHaveSameRomanizedAlias": true,
+        "confidenceGap": 0
+      },
+      "action": "identify without pin",
+      "expected": {
+        "requiresCorrection": true,
+        "remoteSubmitCount": 0
+      }
+    },
+    {
+      "id": "META-03",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "ID修正使整套元数据同源",
+      "given": {
+        "oldId": 336654,
+        "newId": 283938
+      },
+      "action": "correct,preview,restart",
+      "expected": {
+        "id": 283938,
+        "stalePosterUsed": false,
+        "staleSeasonUsed": false
+      }
+    },
+    {
+      "id": "META-04",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "第二季E13不被第一季12集限制",
+      "given": {
+        "cachedSeason": 1,
+        "cachedCount": 12,
+        "pinnedSeason": 2,
+        "incomingEpisode": 13,
+        "freshSeasonCount": 13
+      },
+      "action": "validate then scan twice",
+      "expected": {
+        "accepted": true,
+        "permanentRejectionWrites": 0,
+        "tasksCreated": 1
+      }
+    },
+    {
+      "id": "META-05",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "TMDB429可恢复",
+      "given": {
+        "responses": [
+          429,
+          200
+        ]
+      },
+      "action": "validate then retry",
+      "expected": {
+        "firstDeferred": true,
+        "permanentRejectionWrites": 0,
+        "eventualAccepted": true
+      }
+    },
+    {
+      "id": "META-06",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "TMDB ended不自动完结",
+      "given": {
+        "tmdbEnded": true,
+        "maxEpisode": 12,
+        "rssEpisode": 13
+      },
+      "action": "scan",
+      "expected": {
+        "subscriptionCompletedChanged": false
+      }
+    },
+    {
+      "id": "META-07",
+      "priority": "P0",
+      "layer": "adapter",
+      "title": "LLM fenced JSON",
+      "given": {
+        "response": "```json\n[{\"anime_name\":\"测试\",\"season\":1,\"episode\":3}]\n```"
+      },
+      "action": "parse LLM response",
+      "expected": {
+        "entries": 1,
+        "episode": 3
+      }
+    },
+    {
+      "id": "META-08",
+      "priority": "P0",
+      "layer": "adapter",
+      "title": "LLM invalid/缺字段不猜集数",
+      "given": {
+        "responses": [
+          "not json",
+          "[{\"anime_name\":\"测试\"}]"
+        ]
+      },
+      "action": "parse and validate",
+      "expected": {
+        "fabricatedEpisode": false,
+        "remoteSubmitCount": 0
+      }
+    },
+    {
+      "id": "META-09",
+      "priority": "P0",
+      "layer": "adapter",
+      "title": "LLM批量错位",
+      "given": {
+        "inputCount": 3,
+        "outputCount": 2
+      },
+      "action": "batch parse",
+      "expected": {
+        "incorrectlyAssignedThirdEntry": false,
+        "failureVisible": true
+      }
+    },
+    {
+      "id": "META-10",
+      "priority": "P0",
+      "layer": "contract+concurrency",
+      "title": "模型挂起不冻结UI",
+      "given": {
+        "llmResponseDelaySeconds": 120
+      },
+      "action": "parallel state/log/session requests",
+      "expected": {
+        "localP95MillisecondsAtMost": 100,
+        "processAlive": true
+      }
+    },
+    {
+      "id": "META-11",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "文件标题不用于身份查询",
+      "given": {
+        "fileTitle": "套马的汉子",
+        "identity": "JOJO的奇妙冒险",
+        "pinnedId": 12345
+      },
+      "action": "preview and execute",
+      "expected": {
+        "tmdbQueriesForFileTitle": 0,
+        "unchangedPinnedId": true
+      }
+    },
+    {
+      "id": "META-12",
+      "priority": "P0",
+      "layer": "config+adapter",
+      "title": "生产LLM仍走原provider/model",
+      "given": {
+        "provider": "openai",
+        "baseUrl": "http://stub/v1",
+        "model": "synthetic-model"
+      },
+      "action": "parse",
+      "expected": {
+        "targetPath": "/v1/chat/completions",
+        "requestModel": "synthetic-model",
+        "noChatAgentStarted": true
+      }
+    },
+    {
+      "id": "FLOW-01",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "完整成功链路",
+      "given": {
+        "remote": "submit->download->transfer->video->move->rename"
+      },
+      "action": "execute",
+      "expected": {
+        "submissions": 1,
+        "registeredResources": 1,
+        "fileVerified": true,
+        "state": "completed",
+        "triggersAfterFinalVerification": 1
+      }
+    },
+    {
+      "id": "FLOW-02",
+      "priority": "P0",
+      "layer": "adapter+recovery",
+      "title": "policy拒绝不能换别名重试",
+      "given": {
+        "httpStatus": 200,
+        "body": {
+          "code": 403,
+          "message": "应版权方要求，无法添加"
+        }
+      },
+      "action": "submit then scheduled retry opportunities",
+      "expected": {
+        "state": "failed",
+        "errorClass": "policy_denied",
+        "aliasRetries": 0,
+        "resourceWrites": 0
+      }
+    },
+    {
+      "id": "FLOW-03",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "提交成功但响应丢失",
+      "given": {
+        "remoteCreated": true,
+        "clientTimeout": true,
+        "remoteUuidVisible": true
+      },
+      "action": "kill and restart worker",
+      "expected": {
+        "addOfflineDownloadCount": 1,
+        "boundExistingRemoteTask": true
+      }
+    },
+    {
+      "id": "FLOW-04",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "提交未知且不能证明未执行",
+      "given": {
+        "remoteResultUnknown": true,
+        "listUnavailable": true
+      },
+      "action": "automatic retry and manual retry",
+      "expected": {
+        "state": "failed",
+        "outcome": "unknown",
+        "blindResubmissionCount": 0
+      }
+    },
+    {
+      "id": "FLOW-05",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "移动已执行响应丢失",
+      "given": {
+        "sourceAbsent": true,
+        "expectedDestinationPresent": true,
+        "expectedSizeMatch": true
+      },
+      "action": "restart at uncommitted move",
+      "expected": {
+        "moveCount": 1,
+        "destinationDeleteCount": 0,
+        "reconciled": true
+      }
+    },
+    {
+      "id": "FLOW-06",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "源目标两份不猜测删除",
+      "given": {
+        "sourcePresent": true,
+        "destinationPresent": true,
+        "identityUncertain": true
+      },
+      "action": "reconcile",
+      "expected": {
+        "outcome": "ambiguous",
+        "deletes": 0,
+        "resourceWrites": 0
+      }
+    },
+    {
+      "id": "FLOW-07",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "100%但未远程成功",
+      "given": {
+        "progress": 100,
+        "remoteState": 1,
+        "transferVisible": false
+      },
+      "action": "poll",
+      "expected": {
+        "completed": false,
+        "resourceWrites": 0
+      }
+    },
+    {
+      "id": "FLOW-08",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "下载100%且转存可见",
+      "given": {
+        "downloadInUndone": true,
+        "progress": 100,
+        "transferVisible": true
+      },
+      "action": "poll through transfer and final file verification",
+      "expected": {
+        "advancedToTransfer": true,
+        "completesOnlyWithActualFile": true
+      }
+    },
+    {
+      "id": "FLOW-09",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "转存按UUID关联",
+      "given": {
+        "remoteDownloadId": "download-A",
+        "unrelatedTransfer": "same-title-B",
+        "correctTransferUuid": "task-C"
+      },
+      "action": "poll",
+      "expected": {
+        "selectedTransfer": "task-C",
+        "selectedByLooseTitle": false
+      }
+    },
+    {
+      "id": "FLOW-10",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "网络错误不等价空任务列表",
+      "given": {
+        "taskListResponse": "timeout"
+      },
+      "action": "poll three times",
+      "expected": {
+        "skippedTransferAsAbsent": false,
+        "errorVisible": true
+      }
+    },
+    {
+      "id": "FLOW-11",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "缺文件不报完成",
+      "given": {
+        "remoteSucceeded": true,
+        "directoryHasNoVideo": true
+      },
+      "action": "detect",
+      "expected": {
+        "stateNotCompleted": true,
+        "resourceWrites": 0
+      }
+    },
+    {
+      "id": "FLOW-12",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "选择最大视频但不误删已入库文件",
+      "given": {
+        "videos": [
+          {
+            "name": "main.mp4",
+            "size": 100
+          },
+          {
+            "name": "sample.mp4",
+            "size": 1
+          }
+        ],
+        "temporaryTaskDirectory": true
+      },
+      "action": "detect,move,cleanup",
+      "expected": {
+        "imported": "main.mp4",
+        "outsideTaskDeletes": 0
+      }
+    },
+    {
+      "id": "FLOW-13",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "同名冲突不覆盖",
+      "given": {
+        "destinationHasExistingDifferentFile": true
+      },
+      "action": "resolve and rename",
+      "expected": {
+        "existingOverwrites": 0,
+        "boundedConflictAttempts": 99
+      }
+    },
+    {
+      "id": "FLOW-14",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "改名后必须实际查文件",
+      "given": {
+        "renameApiSuccess": true,
+        "expectedNameNotVisible": true
+      },
+      "action": "finish",
+      "expected": {
+        "stateNotCompleted": true,
+        "resourceWrites": 0
+      }
+    },
+    {
+      "id": "FLOW-15",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "SmartStrm失败不重下载",
+      "given": {
+        "fileVerified": true,
+        "resourcesCommitted": true,
+        "triggerResponses": [
+          500,
+          200
+        ]
+      },
+      "action": "outbox retry",
+      "expected": {
+        "addOfflineDownloadCount": 1,
+        "resourceCount": 1,
+        "finalTaskState": "completed",
+        "triggerAttempts": 2
+      }
+    },
+    {
+      "id": "FLOW-16",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "永久副作用请求不可统一HTTP retry",
+      "given": {
+        "submitTimeout": true,
+        "readTimeout": true
+      },
+      "action": "adapter calls",
+      "expected": {
+        "readsBoundedlyRetried": true,
+        "submitBlindRetryCount": 0
+      }
+    },
+    {
+      "id": "FLOW-17",
+      "priority": "P0",
+      "layer": "concurrency",
+      "title": "扫描/恢复/手动retry同一候选",
+      "given": {
+        "concurrentEntrypoints": 3
+      },
+      "action": "enqueue and execute",
+      "expected": {
+        "activeTasksPerIdentityAndVersion": 1,
+        "submissions": 1
+      }
+    },
+    {
+      "id": "FLOW-18",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "无进展watchdog不等于总时间限制",
+      "given": {
+        "progressIncreasesEveryMinute": true,
+        "totalMinutes": 45
+      },
+      "action": "virtual-clock poll",
+      "expected": {
+        "erroneouslyFailedByTotalTime": false
+      }
+    },
+    {
+      "id": "FLOW-19",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "停滞任务不饿死其它任务",
+      "given": {
+        "firstTaskProgressStalled": true,
+        "secondTaskCanFinish": true,
+        "workers": 2
+      },
+      "action": "poll with virtual watchdog",
+      "expected": {
+        "secondTaskCompletes": true,
+        "firstStallVisible": true,
+        "busySpin": false
+      }
+    },
+    {
+      "id": "FLOW-20",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "SIGTERM flush和helper清理",
+      "given": {
+        "activeTask": true,
+        "activeMetadataHelper": true
+      },
+      "action": "SIGTERM",
+      "expected": {
+        "exitWithinSeconds": 30,
+        "checkpointReadable": true,
+        "orphanHelperCount": 0
+      }
+    },
+    {
+      "id": "REC-init",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧init检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "init"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-submitted",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧submitted检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "submitted"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-download_done",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧download_done检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "download_done"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-transfer_done",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧transfer_done检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "transfer_done"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-file_detected",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧file_detected检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "file_detected"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-file_resolved",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧file_resolved检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "file_resolved"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-moved",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧moved检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "moved"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-done",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "旧done检查点恢复",
+      "given": {
+        "fixture": "legacy-task-fixtures.json",
+        "phase": "done"
+      },
+      "action": "kill/restart from durable payload",
+      "expected": {
+        "taskIdUnchanged": true,
+        "noAlreadyCommittedStepRepeated": true,
+        "finalNameMatchesFrozenPlan": true
+      }
+    },
+    {
+      "id": "REC-UNKNOWN",
+      "priority": "P0",
+      "layer": "migration+recovery",
+      "title": "未知检查点禁止回init",
+      "given": {
+        "workflow_state": "future_unknown"
+      },
+      "action": "import and start",
+      "expected": {
+        "quarantined": true,
+        "submissions": 0
+      }
+    },
+    {
+      "id": "REC-NOTIFYING",
+      "priority": "P0",
+      "layer": "migration+recovery",
+      "title": "旧notifying任务不启动已关闭通知",
+      "given": {
+        "state": "notifying",
+        "finalFileExists": true,
+        "libraryRowExists": true
+      },
+      "action": "restore",
+      "expected": {
+        "notificationsSent": 0,
+        "resubmissions": 0,
+        "finalState": "completed"
+      }
+    },
+    {
+      "id": "REC-FROZEN",
+      "priority": "P0",
+      "layer": "process-recovery",
+      "title": "已提交任务冻结旧计划",
+      "given": {
+        "submittedRevision": 1,
+        "currentConfigRevision": 2
+      },
+      "action": "restart and complete",
+      "expected": {
+        "finalPlanRevision": 1,
+        "targetRecomputedFromCurrentConfig": false
+      }
+    },
+    {
+      "id": "DATA-01",
+      "priority": "P0",
+      "layer": "migration",
+      "title": "legacy SQL/JSON读写",
+      "given": {
+        "fixture": "legacy-schema.json",
+        "taskSchema": 1
+      },
+      "action": "import,run,export,read with Python reference",
+      "expected": {
+        "rawResourceRowsPreserved": true,
+        "taskSchemaCompatible": true
+      }
+    },
+    {
+      "id": "DATA-02",
+      "priority": "P0",
+      "layer": "migration",
+      "title": "导入两次幂等",
+      "given": {
+        "legacyRows": 207
+      },
+      "action": "import twice",
+      "expected": {
+        "resourceRows": 207,
+        "taskIdDuplicates": 0
+      }
+    },
+    {
+      "id": "DATA-03",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "最新集数不是媒体行总数",
+      "given": {
+        "records": [
+          {
+            "episode": 1
+          },
+          {
+            "episode": 2
+          },
+          {
+            "episode": 2
+          },
+          {
+            "episode": 3
+          },
+          {
+            "episode": 3
+          }
+        ]
+      },
+      "action": "progress query",
+      "expected": {
+        "latestEpisode": 3,
+        "uniqueEpisodes": 3,
+        "fullSeasonClaimed": false
+      }
+    },
+    {
+      "id": "DATA-04",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "改文件标题不把别剧并进来",
+      "given": {
+        "twoDifferentTmdbIdsSameFileTitle": true
+      },
+      "action": "bind resources and progress",
+      "expected": {
+        "identitiesMerged": false
+      }
+    },
+    {
+      "id": "DATA-05",
+      "priority": "P0",
+      "layer": "config-recovery",
+      "title": "TOML未知字段秘密注释保留",
+      "given": {
+        "fixture": "config.synthetic.toml"
+      },
+      "action": "change one title and restart",
+      "expected": {
+        "untouchedSectionsPreserved": true,
+        "syntheticSecretUnchanged": true,
+        "commentsPreserved": true
+      }
+    },
+    {
+      "id": "DATA-06",
+      "priority": "P0",
+      "layer": "config-recovery",
+      "title": "配置半写崩溃",
+      "given": {
+        "faultPoints": [
+          "before-fsync",
+          "before-rename",
+          "after-rename"
+        ]
+      },
+      "action": "kill during update; restart",
+      "expected": {
+        "configIsOldOrNewWholeDocument": true,
+        "truncatedDocument": false
+      }
+    },
+    {
+      "id": "DATA-07",
+      "priority": "P0",
+      "layer": "migration",
+      "title": "损坏数据库不空库自愈",
+      "given": {
+        "corruptSqlite": true
+      },
+      "action": "production-mode start",
+      "expected": {
+        "readiness": false,
+        "emptyDatabaseCreated": false,
+        "originalBytesChanged": false
+      }
+    },
+    {
+      "id": "DATA-08",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "SQL登记崩溃可重放但不重复",
+      "given": {
+        "finalFileExists": true,
+        "failureBeforeResourceCommit": true
+      },
+      "action": "restart",
+      "expected": {
+        "verifiedResourceRows": 1,
+        "remoteResubmissions": 0
+      }
+    },
+    {
+      "id": "DATA-09",
+      "priority": "P0",
+      "layer": "rollback",
+      "title": "回滚保留切换后的新数据",
+      "given": {
+        "rustNewResource": true,
+        "rustConfigEdit": true,
+        "rustTaskProgress": true
+      },
+      "action": "rollback and start Python synthetic instance",
+      "expected": {
+        "newDataRetained": true,
+        "resumeSafe": true
+      }
+    },
+    {
+      "id": "DATA-10",
+      "priority": "P0",
+      "layer": "rollback",
+      "title": "重复回滚不覆盖旧服务新数据",
+      "given": {
+        "firstRollbackDone": true,
+        "newPythonWriteAfterRollback": true
+      },
+      "action": "rollback again",
+      "expected": {
+        "secondRollbackNoOp": true,
+        "newPythonWriteRetained": true
+      }
+    },
+    {
+      "id": "DATA-11",
+      "priority": "P0",
+      "layer": "rollback",
+      "title": "未知副作用回滚为失败隔离",
+      "given": {
+        "operationOutcomeUnknown": true
+      },
+      "action": "rollback then old Python recovery",
+      "expected": {
+        "blindResubmissions": 0,
+        "visibleFailedTask": true
+      }
+    },
+    {
+      "id": "DATA-12",
+      "priority": "P0",
+      "layer": "migration",
+      "title": "旧资料归属歧义不自动认领",
+      "given": {
+        "sameNormalizedTitleDifferentSeasonOrShow": true
+      },
+      "action": "binding migration",
+      "expected": {
+        "rawRowsUnmodified": true,
+        "ambiguousRowsReported": true
+      }
+    },
+    {
+      "id": "DATA-13",
+      "priority": "P0",
+      "layer": "migration",
+      "title": "真实schema额外列保留",
+      "given": {
+        "legacyColumn": "resources.episode_name",
+        "value": "synthetic-episode-title"
+      },
+      "action": "migrate,write another field,rollback",
+      "expected": {
+        "episodeNamePreserved": true,
+        "columnNotDropped": true
+      }
+    },
+    {
+      "id": "TOR-01",
+      "priority": "P0",
+      "layer": "unit",
+      "title": "magnet dn快速解析",
+      "given": {
+        "dn": "测试标题",
+        "fixture": "torrent-single-v1.torrent"
+      },
+      "action": "resolve magnet with dn",
+      "expected": {
+        "helperSpawns": 0,
+        "title": "测试标题",
+        "source": "dn"
+      }
+    },
+    {
+      "id": "TOR-02",
+      "priority": "P0",
+      "layer": "adapter",
+      "title": "hash不是可信标题",
+      "given": {
+        "dnEqualsInfohash": true
+      },
+      "action": "resolve",
+      "expected": {
+        "titleNotInfohash": true,
+        "helperAttempted": true
+      }
+    },
+    {
+      "id": "TOR-03",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "种子infohash使用原始字节",
+      "given": {
+        "fixture": "torrent-single-v1.torrent",
+        "expectedMetadata": "torrent-single-v1.expected.json"
+      },
+      "action": "parse and convert",
+      "expected": {
+        "exactExpectedInfohash": true,
+        "exactExpectedFiles": true
+      }
+    },
+    {
+      "id": "TOR-04",
+      "priority": "P0",
+      "layer": "contract+integration",
+      "title": "原网页raw上传协议",
+      "given": {
+        "bodyFixture": "torrent-single-v1.torrent",
+        "headers": {
+          "Content-Type": "application/x-bittorrent",
+          "X-Filename": "synthetic.torrent"
+        }
+      },
+      "action": "POST /api/ui/torrent",
+      "expected": {
+        "submissions": 1,
+        "internalHttpAuthCallbackCount": 0
+      }
+    },
+    {
+      "id": "TOR-05",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "真实长度而非header预算",
+      "given": {
+        "declaredLength": 1,
+        "streamedLengthMiB": 51
+      },
+      "action": "upload",
+      "expected": {
+        "rejected": true,
+        "submissions": 0,
+        "temporaryFilesAfterFailure": 0
+      }
+    },
+    {
+      "id": "TOR-06",
+      "priority": "P0",
+      "layer": "adapter",
+      "title": "远程torrent上限",
+      "given": {
+        "responseBytesMiB": 11
+      },
+      "action": "resolve HTTP .torrent",
+      "expected": {
+        "rejected": true,
+        "submissions": 0
+      }
+    },
+    {
+      "id": "TOR-07",
+      "priority": "P0",
+      "layer": "native-helper",
+      "title": "DHT metadata-only不拉视频",
+      "given": {
+        "fixture": "torrent-metadata-seed-v1.torrent",
+        "seedPayload": "torrent-metadata-seed.payload",
+        "localSeed": true,
+        "magnetHasNoDn": true
+      },
+      "action": "real helper protocol test with nonzero payload and real peer observations",
+      "expected": {
+        "metadataResolved": true,
+        "requestedVideoPieces": 0,
+        "receivedVideoPayloadBytes": 0
+      }
+    },
+    {
+      "id": "TOR-08",
+      "priority": "P0",
+      "layer": "native-helper",
+      "title": "helper timeout/cancel完整退出",
+      "given": {
+        "hungHelperChildAndGrandchild": true
+      },
+      "action": "timeout and cancellation",
+      "expected": {
+        "remainingHelperProcesses": 0,
+        "remainingOwnTemporaryFiles": 0
+      }
+    },
+    {
+      "id": "TOR-09",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "损坏种子不伪造成功",
+      "given": {
+        "bytes": "not bencode"
+      },
+      "action": "upload and resolve",
+      "expected": {
+        "success": false,
+        "taskCount": 0
+      }
+    },
+    {
+      "id": "TOR-10",
+      "priority": "P0",
+      "layer": "adapter",
+      "title": "v2或hybrid不能乱算v1",
+      "given": {
+        "syntheticV2OrHybrid": true
+      },
+      "action": "resolve",
+      "expected": {
+        "correctlySupportedOrExplicitlyRejected": true,
+        "bogusV1Hash": false
+      }
+    },
+    {
+      "id": "SEC-01",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "未登录私有API与页面",
+      "given": {
+        "authenticated": false
+      },
+      "action": "GET /api/ui/state; GET /",
+      "expected": {
+        "apiStatus": 401,
+        "pageStatus": 303,
+        "pageLocation": "/login"
+      }
+    },
+    {
+      "id": "SEC-02",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "旧PBKDF2/HMAC兼容",
+      "given": {
+        "fixture": "auth.synthetic.json"
+      },
+      "action": "login and legacy cookie validation with frozen clock",
+      "expected": {
+        "passwordAccepted": true,
+        "legacyCookieAccepted": true
+      }
+    },
+    {
+      "id": "SEC-03",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "过期/篡改cookie",
+      "given": {
+        "fixture": "auth.synthetic.json",
+        "mutations": [
+          "expired",
+          "signature-bit-flip",
+          "foreign-user"
+        ]
+      },
+      "action": "private request",
+      "expected": {
+        "allStatuses": 401
+      }
+    },
+    {
+      "id": "SEC-04",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "设置和日志不漏秘密",
+      "given": {
+        "secrets": [
+          "synthetic-secret-marker",
+          "synthetic-api-key-marker"
+        ]
+      },
+      "action": "settings,logs,error paths",
+      "expected": {
+        "responseContainsMarkers": false
+      }
+    },
+    {
+      "id": "SEC-05",
+      "priority": "P0",
+      "layer": "contract",
+      "title": "可信代理HTTPS Cookie",
+      "given": {
+        "trustedLoopbackProxy": true,
+        "forwardedProto": "https"
+      },
+      "action": "login",
+      "expected": {
+        "cookieSecure": true,
+        "cookieHttpOnly": true,
+        "cookieSameSite": "Lax"
+      }
+    },
+    {
+      "id": "SEC-06",
+      "priority": "P0",
+      "layer": "security",
+      "title": "跨站写入拒绝原网页正常",
+      "given": {
+        "hostileOrigin": "https://attacker.example",
+        "legitimateOrigin": "https://op-ani.example.test"
+      },
+      "action": "POST mutation with each Origin",
+      "expected": {
+        "hostileAccepted": false,
+        "legitimateAccepted": true
+      }
+    },
+    {
+      "id": "SEC-07",
+      "priority": "P0",
+      "layer": "security",
+      "title": "文件读取路径逃逸",
+      "given": {
+        "paths": [
+          "../auth.env",
+          "%2e%2e%2fauth.env",
+          "/etc/passwd",
+          "symlink.torrent"
+        ]
+      },
+      "action": "uploads/static handlers",
+      "expected": {
+        "exposedPrivateFiles": 0
+      }
+    },
+    {
+      "id": "SEC-08",
+      "priority": "P0",
+      "layer": "security",
+      "title": "RSS跳转到cloud metadata",
+      "given": {
+        "initial": "https://feed.example.test/rss",
+        "redirect": "http://169.254.169.254/"
+      },
+      "action": "fetch",
+      "expected": {
+        "followedPrivateMetadataRedirect": false
+      }
+    },
+    {
+      "id": "SEC-09",
+      "priority": "P0",
+      "layer": "security",
+      "title": "合法本机依赖仍可用",
+      "given": {
+        "configuredOpenlist": "http://127.0.0.1:stub",
+        "configuredLLM": "http://127.0.0.1:stub/v1"
+      },
+      "action": "health and metadata",
+      "expected": {
+        "configuredDependenciesAccessible": true
+      }
+    },
+    {
+      "id": "SEC-10",
+      "priority": "P0",
+      "layer": "security",
+      "title": "模型/标题内容不执行或注入网页",
+      "given": {
+        "title": "<script>synthetic()</script>",
+        "llmPath": "../../auth.env"
+      },
+      "action": "preview and browser render",
+      "expected": {
+        "codeExecution": false,
+        "pathEscape": false,
+        "titleEscaped": true
+      }
+    },
+    {
+      "id": "SEC-11",
+      "priority": "P0",
+      "layer": "security",
+      "title": "regex消耗有界",
+      "given": {
+        "title": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!",
+        "pathologicalRegex": "(a+)+$"
+      },
+      "action": "save/match bounded compatibility engine",
+      "expected": {
+        "uiResponsive": true,
+        "boundedCompletionOrExplicitBudgetError": true
+      }
+    },
+    {
+      "id": "SEC-12",
+      "priority": "P0",
+      "layer": "startup",
+      "title": "生产缺auth不得裸开放",
+      "given": {
+        "authConfigured": false,
+        "productionMode": true
+      },
+      "action": "start",
+      "expected": {
+        "ready": false,
+        "unauthenticatedPublicService": false
+      }
+    },
+    {
+      "id": "SCOPE-01",
+      "priority": "P0",
+      "layer": "startup+integration",
+      "title": "已批准关闭模块不运行",
+      "given": {
+        "assistant": false,
+        "notification": false
+      },
+      "action": "start and scan",
+      "expected": {
+        "chatAgentThreads": 0,
+        "botConnections": 0,
+        "residentPythonHelpers": 0,
+        "llmMetadataStillAvailable": true
+      }
+    },
+    {
+      "id": "SCOPE-02",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "staging配置不启动复制的任务",
+      "given": {
+        "stagedLegacyPendingTasks": 3,
+        "scannerDisabled": true,
+        "shadowMode": true
+      },
+      "action": "start staging and poll UI",
+      "expected": {
+        "remoteMutations": 0,
+        "readablePendingTasks": 3
+      }
+    },
+    {
+      "id": "SCOPE-03",
+      "priority": "P0",
+      "layer": "integration",
+      "title": "任务历史不永久留内存",
+      "given": {
+        "completedTasks": 10000,
+        "failedTasks": 10000,
+        "uiPageSize": 100
+      },
+      "action": "list history and poll current tasks",
+      "expected": {
+        "historyPagedFromDb": true,
+        "unboundedInMemoryTaskHistory": false,
+        "rowsLost": false
+      }
+    },
+    {
+      "id": "UI-01",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "登录退出",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "desktop login -> logout",
+      "expected": {
+        "privateApiAfterLogout": 401
+      }
+    },
+    {
+      "id": "UI-02",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "手机默认配置可见",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "390px details",
+      "expected": {
+        "standardFieldsVisibleWithoutExpand": true,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "id": "UI-03",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "四状态筛选记忆",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "select paused -> reload",
+      "expected": {
+        "filter": "paused",
+        "localStorageKey": "op-ani.subscription-filter"
+      }
+    },
+    {
+      "id": "UI-04",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "尺寸选择记忆",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "select large -> reload",
+      "expected": {
+        "size": "large",
+        "localStorageKey": "op-ani.subscription-card-size"
+      }
+    },
+    {
+      "id": "UI-05",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "刷新才重排",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "mark completed then full reload",
+      "expected": {
+        "currentPositionsUnchangedBeforeReload": true,
+        "afterReloadStatusOrder": [
+          "running",
+          "paused",
+          "completed"
+        ]
+      }
+    },
+    {
+      "id": "UI-06",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "TMDB组内降序",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "load mixed subscriptions",
+      "expected": {
+        "idsDescWithinStatus": true,
+        "missingIdsLast": true
+      }
+    },
+    {
+      "id": "UI-07",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "按钮颜色图标",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "inspect actions",
+      "expected": {
+        "pause": "yellow",
+        "completed": "green",
+        "resume": "blue-play",
+        "delete": "red",
+        "backgroundsConsistent": true
+      }
+    },
+    {
+      "id": "UI-08",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "大卡片按钮适配",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "large cards desktop/mobile click all actions",
+      "expected": {
+        "noTinyOrOverlappingTargets": true,
+        "noOuterCardNavigationOnAction": true
+      }
+    },
+    {
+      "id": "UI-09",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "详细设置真实文件计划",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "change fileSeason1 dirSeason6 title -> preview",
+      "expected": {
+        "filename": "套马的汉子 - S01E03.mp4",
+        "fullPathVisible": true,
+        "dbPersisted": true
+      }
+    },
+    {
+      "id": "UI-10",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "TMDB修正和海报",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "select pinned ID -> preview -> save -> reload",
+      "expected": {
+        "idPosterNameConsistent": true
+      }
+    },
+    {
+      "id": "UI-11",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "添加确认流程",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "add RSS -> preview -> confirm",
+      "expected": {
+        "beforeConfirmTasks": 0,
+        "afterConfirmOneSubscription": true
+      }
+    },
+    {
+      "id": "UI-12",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "失败重试与归档",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "policy-failed task -> retry -> archive",
+      "expected": {
+        "noHiddenDuplicateSubmit": true,
+        "archivedPersisted": true
+      }
+    },
+    {
+      "id": "UI-13",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "日志倒序和级别",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "open logs and select ERROR",
+      "expected": {
+        "newestFirst": true,
+        "onlySelectedLevel": true,
+        "noSecrets": true
+      }
+    },
+    {
+      "id": "UI-14",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "删除确认不删视频",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "delete -> cancel -> delete -> confirm",
+      "expected": {
+        "cancelKeepsSubscription": true,
+        "confirmedRemovesSubscription": true,
+        "remoteVideoDeletes": 0
+      }
+    },
+    {
+      "id": "UI-15",
+      "priority": "P0",
+      "layer": "real-browser",
+      "title": "实际API与运行异常",
+      "given": {
+        "viewports": [
+          [
+            1366,
+            900
+          ],
+          [
+            390,
+            844
+          ],
+          [
+            360,
+            800
+          ]
+        ],
+        "realRustServer": true,
+        "realSqlite": true
+      },
+      "action": "full UI suite against real Rust/SQLite",
+      "expected": {
+        "pageErrors": 0,
+        "unexpectedHttpErrors": 0,
+        "apiRouteMockingForbidden": true
+      }
+    },
+    {
+      "id": "PERF-01",
+      "priority": "P0",
+      "layer": "linux-benchmark",
+      "title": "同条件内存A/B",
+      "given": {
+        "sameHostAndFixture": true,
+        "releaseBuild": true,
+        "samplesSeconds": 30
+      },
+      "action": "Python then Rust workload",
+      "expected": {
+        "separatePssRssCgroupSwapReports": true,
+        "forcedCacheDrop": false
+      }
+    },
+    {
+      "id": "PERF-02",
+      "priority": "P0",
+      "layer": "linux-benchmark",
+      "title": "常态PSS",
+      "given": {
+        "warmup": true,
+        "metadataHelperIdle": true
+      },
+      "action": "sample 30s",
+      "expected": {
+        "pssMiBAtMost": 40,
+        "residentPythonProcesses": 0
+      }
+    },
+    {
+      "id": "PERF-03",
+      "priority": "P0",
+      "layer": "linux-benchmark",
+      "title": "常规峰值",
+      "given": {
+        "activeDownloads": 2,
+        "rssActive": 4,
+        "uiPolling": true
+      },
+      "action": "sample 30s",
+      "expected": {
+        "mainProcessPeakPssMiBAtMost": 80
+      }
+    },
+    {
+      "id": "PERF-04",
+      "priority": "P0",
+      "layer": "linux-soak",
+      "title": "30分钟扫描稳定性",
+      "given": {
+        "durationSeconds": 1800,
+        "rssPeriodSeconds": 300
+      },
+      "action": "repeat UI/RSS/task polling",
+      "expected": {
+        "scanCyclesAtLeast": 6,
+        "pssNetGrowthMiBAtMost": 5,
+        "fdGrowthBounded": true
+      }
+    },
+    {
+      "id": "PERF-05",
+      "priority": "P0",
+      "layer": "linux-benchmark",
+      "title": "CPU空闲无busy loop",
+      "given": {
+        "noActiveTasks": true
+      },
+      "action": "sample process CPU",
+      "expected": {
+        "averageSingleCoreCpuPercentAtMost": 1
+      }
+    },
+    {
+      "id": "PERF-06",
+      "priority": "P0",
+      "layer": "linux-benchmark",
+      "title": "UI接口延迟",
+      "given": {
+        "localOnlyRequests": true,
+        "metadataHung": true
+      },
+      "action": "state/logs/session workload",
+      "expected": {
+        "p95MillisecondsAtMost": 100
+      }
+    },
+    {
+      "id": "PERF-07",
+      "priority": "P0",
+      "layer": "linux-benchmark",
+      "title": "大上传/helper独立峰值",
+      "given": {
+        "uploadMiB": 50,
+        "nativeHelper": true
+      },
+      "action": "peak and cleanup sampling",
+      "expected": {
+        "peakReportedSeparately": true,
+        "oomKills": 0,
+        "idleHelpers": 0
+      }
+    },
+    {
+      "id": "DEPLOY-01",
+      "priority": "P0",
+      "layer": "staging",
+      "title": "stage禁止双scanner",
+      "given": {
+        "pythonProductionActive": true,
+        "rustStaging": true
+      },
+      "action": "start staging",
+      "expected": {
+        "stagingRemoteMutations": 0,
+        "liveConfigOrRowsChanged": false
+      }
+    },
+    {
+      "id": "DEPLOY-02",
+      "priority": "P0",
+      "layer": "production-canary",
+      "title": "真实文件不只看DB",
+      "given": {
+        "explicitlyAuthorized": true,
+        "ownTestDirectory": true,
+        "legalSmallResource": true
+      },
+      "action": "actual download->rename->query->trigger",
+      "expected": {
+        "finalPathAndSizeVerified": true,
+        "planMatchesFile": true,
+        "cleanupOutsideTestObjects": 0
+      }
+    },
+    {
+      "id": "DEPLOY-03",
+      "priority": "P0",
+      "layer": "deployment",
+      "title": "当前配置漂移拒绝覆盖",
+      "given": {
+        "configChangedAfterBackup": true
+      },
+      "action": "attempt cutover",
+      "expected": {
+        "refusedBeforeOverwrite": true,
+        "liveConfigRetained": true
+      }
+    },
+    {
+      "id": "DEPLOY-04",
+      "priority": "P0",
+      "layer": "deployment",
+      "title": "二进制身份和单实例",
+      "given": {
+        "linuxRelease": true,
+        "finalServiceName": "openlist-ani.service"
+      },
+      "action": "authorized cutover acceptance",
+      "expected": {
+        "activeRust": true,
+        "oldPythonWorkerCount": 0,
+        "activeScanners": 1,
+        "NRestarts": 0
+      }
+    },
+    {
+      "id": "HTTP-01",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/",
+          "handler": "index",
+          "source": "openlist_ani/adapters/inbound/http/app.py",
+          "line": 69,
+          "arguments": [],
+          "returnAnnotation": "HTMLResponse",
+          "doc": "Serve the user-facing RSS/torrent entry point."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 303
+      }
+    },
+    {
+      "id": "HTTP-02",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/auth/login",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/auth/login",
+          "handler": "auth_login",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 72,
+          "arguments": [
+            {
+              "name": "payload",
+              "type": "LoginRequest"
+            },
+            {
+              "name": "request",
+              "type": "Request"
+            },
+            {
+              "name": "response",
+              "type": "Response"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": null
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": "public-contract"
+      }
+    },
+    {
+      "id": "HTTP-03",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/auth/logout",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/auth/logout",
+          "handler": "auth_logout",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 93,
+          "arguments": [
+            {
+              "name": "response",
+              "type": "Response"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": null
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": "public-contract"
+      }
+    },
+    {
+      "id": "HTTP-04",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/auth/session",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/auth/session",
+          "handler": "auth_session",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 66,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "Request"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": null
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": "public-contract"
+      }
+    },
+    {
+      "id": "HTTP-05",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/downloads",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/downloads",
+          "handler": "list_downloads",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 594,
+          "arguments": [],
+          "returnAnnotation": "DownloadListResponse",
+          "doc": "Get all active download tasks."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-06",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/downloads",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/downloads",
+          "handler": "create_download",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 583,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "CreateDownloadRequest"
+            }
+          ],
+          "returnAnnotation": "CreateDownloadResponse",
+          "doc": "Create a new download task."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-07",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/downloads/{task_id}",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/downloads/{task_id}",
+          "handler": "get_download",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 605,
+          "arguments": [
+            {
+              "name": "task_id",
+              "type": "str"
+            }
+          ],
+          "returnAnnotation": "DownloadTaskResponse",
+          "doc": "Get a specific download task's status and progress."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-08",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/parse_rss",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/parse_rss",
+          "handler": "parse_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 641,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "ParseRSSRequest"
+            }
+          ],
+          "returnAnnotation": "ParseRSSResponse",
+          "doc": "Parse an RSS feed and return its release entries.\n\nReturns raw, un-enriched entries (title, download_url, fansub, etc.).\nThe caller (assistant) decides which entries to enqueue via\n``/api/downloads``."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-09",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/resolve_magnet",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/resolve_magnet",
+          "handler": "resolve_magnet",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 653,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "ResolveMagnetRequest"
+            }
+          ],
+          "returnAnnotation": "ResolveMagnetResponse",
+          "doc": "Resolve a magnet URI to its real title and file list.\n\nOrder of operations: ``dn=`` parameter → libtorrent metadata\n(DHT/peers, bounded by ``metadata_timeout``).  Detects collection\nreleases via title-keyword matching so callers can refuse them."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-10",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/resolve_torrent",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/resolve_torrent",
+          "handler": "resolve_torrent",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 667,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "ResolveTorrentRequest"
+            }
+          ],
+          "returnAnnotation": "ResolveTorrentResponse",
+          "doc": "Resolve a .torrent file URL to its real title and file list.\n\nDownloads the .torrent via HTTP(S) (size- and time-bounded), then\nparses the blob with libtorrent.  Mirrors ``/api/resolve_magnet``'s\nresponse shape so callers can share the same downstream pipeline."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-11",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/restart",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/restart",
+          "handler": "restart_service",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 565,
+          "arguments": [],
+          "returnAnnotation": "RestartResponse",
+          "doc": "Restart the application by sending SIGHUP to self."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-12",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/rss",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/rss",
+          "handler": "add_rss_url",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 575,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "AddRSSRequest"
+            }
+          ],
+          "returnAnnotation": "AddRSSResponse",
+          "doc": "Add a new RSS monitoring URL."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-13",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/downloads/{task_id}/archive",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/downloads/{task_id}/archive",
+          "handler": "ui_archive_failed_download",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 630,
+          "arguments": [
+            {
+              "name": "task_id",
+              "type": "str"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "Hide one failed task while keeping its durable history."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-14",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/downloads/{task_id}/retry",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/downloads/{task_id}/retry",
+          "handler": "ui_retry_download",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 615,
+          "arguments": [
+            {
+              "name": "task_id",
+              "type": "str"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "Manually retry a failed download using a fresh OpenList task."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-15",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/ui/logs",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/ui/logs",
+          "handler": "ui_logs",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 162,
+          "arguments": [
+            {
+              "name": "limit",
+              "type": "int",
+              "defaultExpression": "300"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "Return a bounded tail of sanitized OpenList-Ani runtime logs."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-16",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/mikan/groups",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/mikan/groups",
+          "handler": "ui_mikan_groups",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 292,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "MikanGroupsRequest"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "List subtitle groups for a selected Mikan bangumi."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-17",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/mikan/rss",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/mikan/rss",
+          "handler": "ui_mikan_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 312,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "MikanRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "Build a group-specific RSS URL for the existing add/preview flow."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-18",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/mikan/search",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/mikan/search",
+          "handler": "ui_mikan_search",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 275,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "MikanSearchRequest"
+            }
+          ],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "Search the configured Mikan-compatible site from the web UI."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-19",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "DELETE /api/ui/rss",
+      "given": {
+        "route": {
+          "method": "DELETE",
+          "path": "/api/ui/rss",
+          "handler": "ui_remove_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 496,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "AddRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Remove an RSS source and stop monitoring it immediately."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-20",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss",
+          "handler": "ui_add_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 334,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "AddRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Validate, persist and activate a new RSS subscription."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-21",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/completed",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/completed",
+          "handler": "ui_set_rss_completed",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 426,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "SetRSSCompletedRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Mark an anime completed or resume its RSS tracking."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-22",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/correct",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/correct",
+          "handler": "ui_correct_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 458,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "CorrectRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Correct an existing RSS URL and its metadata in one operation."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-23",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/exclude",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/exclude",
+          "handler": "ui_update_rss_exclude",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 440,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "AddRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Update only one subscription's title exclusions."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-24",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/filter",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/filter",
+          "handler": "ui_update_global_rss_filter",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 407,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "GlobalRSSFilterRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Update the global RSS title exclusion list."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-25",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/metadata",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/metadata",
+          "handler": "ui_refresh_rss_metadata",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 481,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "AddRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Re-identify an existing RSS subscription and persist its metadata."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-26",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/preview",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/preview",
+          "handler": "ui_preview_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 385,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "RSSPreviewRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Fetch and identify an RSS without saving it."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-27",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/remove",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/remove",
+          "handler": "ui_remove_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 496,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "AddRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Remove an RSS source and stop monitoring it immediately."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-28",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/rss/toggle",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/rss/toggle",
+          "handler": "ui_toggle_rss",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 414,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "ToggleRSSRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Pause or resume a persisted RSS subscription without deleting it."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-29",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/scan",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/scan",
+          "handler": "ui_scan_now",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 327,
+          "arguments": [],
+          "returnAnnotation": "dict[str, object]",
+          "doc": "Run the RSS scanner immediately instead of waiting for its timer."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-30",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/ui/settings",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/ui/settings",
+          "handler": "ui_settings",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 140,
+          "arguments": [],
+          "returnAnnotation": "dict",
+          "doc": "Return settings safe for the browser settings dialog."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-31",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/settings",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/settings",
+          "handler": "ui_update_settings",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 172,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "UISettingsRequest"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Persist global filters and LLM settings from the browser dialog."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-32",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/ui/state",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/ui/state",
+          "handler": "ui_state",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 113,
+          "arguments": [],
+          "returnAnnotation": "dict",
+          "doc": "Return only the UI-safe runtime state needed by the built-in page."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-33",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "POST /api/ui/torrent",
+      "given": {
+        "route": {
+          "method": "POST",
+          "path": "/api/ui/torrent",
+          "handler": "ui_upload_torrent",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 518,
+          "arguments": [
+            {
+              "name": "request",
+              "type": "Request"
+            }
+          ],
+          "returnAnnotation": "dict",
+          "doc": "Upload a torrent, resolve its title, and start the OpenList task."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-34",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /api/ui/uploads/{filename}",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/api/ui/uploads/{filename}",
+          "handler": "serve_uploaded_torrent",
+          "source": "openlist_ani/adapters/inbound/http/router.py",
+          "line": 506,
+          "arguments": [
+            {
+              "name": "filename",
+              "type": "str"
+            }
+          ],
+          "returnAnnotation": "FileResponse",
+          "doc": "Serve an uploaded torrent to OpenList on the same machine."
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": 401
+      }
+    },
+    {
+      "id": "HTTP-35",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "GET /login",
+      "given": {
+        "route": {
+          "method": "GET",
+          "path": "/login",
+          "handler": "login_page",
+          "source": "openlist_ani/adapters/inbound/http/app.py",
+          "line": 62,
+          "arguments": [],
+          "returnAnnotation": "HTMLResponse",
+          "doc": null
+        },
+        "authenticated": true,
+        "syntheticDatabase": true,
+        "validPayloadFromModelReference": true
+      },
+      "action": "execute success, bad input and unauthenticated variants; compare documented response keys",
+      "expected": {
+        "implemented": true,
+        "schemaCompatible": true,
+        "negativeValidationCovered": true,
+        "unauthenticatedStatus": "public-contract"
+      }
+    },
+    {
+      "id": "HTTP-HEALTH",
+      "priority": "P0",
+      "layer": "real-http-contract",
+      "title": "本地健康状态区分依赖故障",
+      "given": {
+        "dbHealthy": true,
+        "openlistUnavailable": true,
+        "loopbackRequest": true
+      },
+      "action": "query health and UI",
+      "expected": {
+        "apiAlive": true,
+        "dependencyDegradedReported": true,
+        "forcedRestartStorm": false
+      }
+    }
+  ]
+}

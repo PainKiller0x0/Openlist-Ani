@@ -1,0 +1,41 @@
+{
+  "data.db": [
+    {
+      "type": "index",
+      "name": "idx_anime_episode",
+      "sql": "CREATE INDEX idx_anime_episode ON resources(anime_name, season, episode)"
+    },
+    {
+      "type": "index",
+      "name": "idx_title",
+      "sql": "CREATE INDEX idx_title ON resources(title)"
+    },
+    {
+      "type": "table",
+      "name": "resources",
+      "sql": "CREATE TABLE resources (\n                    id INTEGER PRIMARY KEY AUTOINCREMENT,\n                    url TEXT NOT NULL,\n                    title TEXT UNIQUE NOT NULL,\n                    anime_name TEXT,\n                    season INTEGER,\n                    episode INTEGER,\n                    fansub TEXT,\n                    quality TEXT,\n                    languages TEXT,\n                    version INTEGER,\n                    downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n                , episode_name TEXT)"
+    },
+    {
+      "type": "table",
+      "name": "strict_rejections",
+      "sql": "CREATE TABLE strict_rejections (\n                    url TEXT PRIMARY KEY,\n                    title TEXT NOT NULL,\n                    rejected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n                )"
+    }
+  ],
+  "task_mementos.db": [
+    {
+      "type": "index",
+      "name": "idx_task_mementos_updated_at",
+      "sql": "CREATE INDEX idx_task_mementos_updated_at ON task_mementos(updated_at)"
+    },
+    {
+      "type": "table",
+      "name": "task_memento_metadata",
+      "sql": "CREATE TABLE task_memento_metadata (\n                    key TEXT PRIMARY KEY,\n                    value TEXT NOT NULL\n                )"
+    },
+    {
+      "type": "table",
+      "name": "task_mementos",
+      "sql": "CREATE TABLE task_mementos (\n                    task_id TEXT PRIMARY KEY,\n                    state TEXT NOT NULL,\n                    updated_at TEXT NOT NULL,\n                    payload TEXT NOT NULL\n                )"
+    }
+  ]
+}

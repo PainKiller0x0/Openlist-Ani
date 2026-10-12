@@ -1,0 +1,13 @@
+{
+  "syntheticOnly": true,
+  "infoHash": "ec35f3f9dd458652ef8f08bac161b5e732be1e47",
+  "title": "synthetic-nonzero.mp4",
+  "files": [
+    {
+      "name": "synthetic-nonzero.mp4",
+      "size": 131072
+    }
+  ],
+  "pieceCount": 8,
+  "note": "Synthetic repeated bytes, no actual/copyrighted video. Native helper test must observe zero video-pieces traffic with a real local metadata seed."
+}

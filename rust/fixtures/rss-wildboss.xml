@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>Synthetic Wild Boss Regression Feed</title>
+<link>https://feed.example.test/wildboss</link>
+<description>Synthetic fixtures, not a captured/live feed.</description>
+<item><guid>synthetic-wildboss-13</guid><title>[ANi] Yasei no Last Boss ga Arawareta / 野生的大魔王出现了！ - 13 [1080P][CHT][MP4]</title><enclosure url="http://127.0.0.1:19002/13.torrent" type="application/x-bittorrent" length="128"/></item>
+<item><guid>synthetic-wildboss-14</guid><title>[ANi] Yasei no Last Boss ga Arawareta / 野生的大魔王出现了！ - 14 [1080P][CHT][MP4]</title><enclosure url="http://127.0.0.1:19002/14.torrent" type="application/x-bittorrent" length="128"/></item>
+<item><guid>synthetic-wildboss-15</guid><title>[ANi] Yasei no Last Boss ga Arawareta / 野生的大魔王出现了！ - 15 [1080P][CHT][MP4]</title><enclosure url="http://127.0.0.1:19002/15.torrent" type="application/x-bittorrent" length="128"/></item>
+</channel></rss>

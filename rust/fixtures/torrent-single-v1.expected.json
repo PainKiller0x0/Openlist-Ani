@@ -1,0 +1,13 @@
+{
+  "syntheticOnly": true,
+  "infoHash": "b54bdc092d6746ee0207c08e7550b5a004574246",
+  "title": "synthetic.mp4",
+  "files": [
+    {
+      "name": "synthetic.mp4",
+      "size": 0
+    }
+  ],
+  "piecePayloadBytes": 0,
+  "note": "Parser fixture only. For metadata-only no-piece proof also create a nonzero synthetic payload seed and assert no pieces requests; a zero-size torrent alone cannot prove the helper does not download media."
+}

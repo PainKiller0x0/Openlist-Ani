@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "basePath": "/迅雷/videos/番",
+  "note": "Manually specified expected outputs; never regenerate expected with product naming code.",
+  "cases": [
+    {
+      "id": "NAME-01",
+      "title": "基础格式",
+      "input": {
+        "anime_name": "示例番剧 (2026)",
+        "season": 1,
+        "episode": 3,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "filename": "示例番剧 (2026) - S01E03.mp4",
+        "directory": "/迅雷/videos/番/示例番剧 (2026)/Season 1"
+      }
+    },
+    {
+      "id": "NAME-02",
+      "title": "JOJO身份和输出彻底分离",
+      "input": {
+        "anime_name": "JOJO的奇妙冒险 (2012)",
+        "anime_name_override": "套马的汉子",
+        "download_directory_name_override": "JOJO的奇妙冒险 (2012)",
+        "season": 8,
+        "episode": 3,
+        "filename_season_override": 1,
+        "directory_season_override": 6,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "filename": "套马的汉子 - S01E03.mp4",
+        "directory": "/迅雷/videos/番/JOJO的奇妙冒险 (2012)/Season 6",
+        "identity_season": 8,
+        "episode": 3
+      }
+    },
+    {
+      "id": "NAME-03",
+      "title": "只覆盖目录",
+      "input": {
+        "anime_name": "甲",
+        "season": 2,
+        "episode": 15,
+        "directory_season_override": 7,
+        "extension": ".mkv"
+      },
+      "expected": {
+        "filename": "甲 - S02E15.mkv",
+        "directory": "/迅雷/videos/番/甲/Season 7",
+        "identity_season": 2
+      }
+    },
+    {
+      "id": "NAME-04",
+      "title": "只覆盖文件季号",
+      "input": {
+        "anime_name": "乙",
+        "season": 6,
+        "episode": 1,
+        "filename_season_override": 1,
+        "extension": ".mkv"
+      },
+      "expected": {
+        "filename": "乙 - S01E01.mkv",
+        "directory": "/迅雷/videos/番/乙/Season 6"
+      }
+    },
+    {
+      "id": "NAME-05",
+      "title": "zero override为未设置",
+      "input": {
+        "anime_name": "丙",
+        "season": 2,
+        "episode": 4,
+        "filename_season_override": 0,
+        "directory_season_override": 0,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "filename": "丙 - S02E04.mp4",
+        "directory": "/迅雷/videos/番/丙/Season 2"
+      }
+    },
+    {
+      "id": "NAME-06",
+      "title": "S00不得改成S01",
+      "intentionalLegacyDifference": true,
+      "input": {
+        "anime_name": "特别篇",
+        "season": 0,
+        "episode": 1,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "filename": "特别篇 - S00E01.mp4",
+        "directory": "/迅雷/videos/番/特别篇/Season 0"
+      }
+    },
+    {
+      "id": "NAME-07",
+      "title": "版本后缀",
+      "input": {
+        "anime_name": "重制",
+        "season": 1,
+        "episode": 2,
+        "version": 2,
+        "extension": ".mkv"
+      },
+      "expected": {
+        "filename": "重制 - S01E02 v2.mkv",
+        "directory": "/迅雷/videos/番/重制/Season 1"
+      }
+    },
+    {
+      "id": "NAME-08",
+      "title": "大于两位集数不截断",
+      "input": {
+        "anime_name": "长篇",
+        "season": 1,
+        "episode": 123,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "filename": "长篇 - S01E123.mp4",
+        "directory": "/迅雷/videos/番/长篇/Season 1"
+      }
+    },
+    {
+      "id": "NAME-09",
+      "title": "标题非法字符净化",
+      "input": {
+        "anime_name": "A:B/C",
+        "season": 1,
+        "episode": 1,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "filename": "A B C - S01E01.mp4",
+        "directory": "/迅雷/videos/番/A B C/Season 1"
+      }
+    },
+    {
+      "id": "NAME-10",
+      "title": "空集数不能默认为1",
+      "intentionalLegacyDifference": true,
+      "input": {
+        "anime_name": "无集数",
+        "season": 1,
+        "episode": null,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "error": "missing_episode",
+        "submitCount": 0
+      }
+    },
+    {
+      "id": "NAME-11",
+      "title": "目录逃逸",
+      "input": {
+        "anime_name": "安全",
+        "download_directory_name_override": "..",
+        "season": 1,
+        "episode": 1,
+        "extension": ".mp4"
+      },
+      "expected": {
+        "error": "unsafe_directory_component",
+        "submitCount": 0
+      }
+    },
+    {
+      "id": "NAME-12",
+      "title": "模板宽度",
+      "input": {
+        "anime_name": "模板",
+        "season": 2,
+        "episode": 7,
+        "extension": ".mkv",
+        "rename_format": "{anime_name} [{season:02d}x{episode:03d}]"
+      },
+      "expected": {
+        "filename": "模板 [02x007].mkv",
+        "directory": "/迅雷/videos/番/模板/Season 2"
+      }
+    },
+    {
+      "id": "NAME-13",
+      "title": "模板未知字段拒绝保存",
+      "input": {
+        "anime_name": "模板",
+        "season": 2,
+        "episode": 7,
+        "extension": ".mp4",
+        "rename_format": "{unknown}"
+      },
+      "expected": {
+        "error": "invalid_rename_format",
+        "persistedConfigChanged": false
+      }
+    },
+    {
+      "id": "NAME-14",
+      "title": "模板不可输出分隔符",
+      "input": {
+        "anime_name": "模板",
+        "season": 2,
+        "episode": 7,
+        "extension": ".mp4",
+        "rename_format": "{anime_name}/{episode}"
+      },
+      "expected": {
+        "error": "unsafe_rename_format",
+        "persistedConfigChanged": false
+      }
+    }
+  ]
+}
