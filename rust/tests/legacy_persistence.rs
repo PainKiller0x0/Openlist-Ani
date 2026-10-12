@@ -2,7 +2,7 @@ use openlist_ani_rs::storage::{
     LegacyMementoRecord, LegacyResourceInput, LegacyResourceStore, LegacyTaskMementoStore,
 };
 use rusqlite::Connection;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tempfile::tempdir;
 
 fn create_legacy_data_db(path: &std::path::Path) {
@@ -233,4 +233,44 @@ fn episode_lookup_is_season_specific_and_returns_all_release_versions() {
         .map(|release| release.version.unwrap())
         .collect::<HashSet<_>>();
     assert_eq!(versions, HashSet::from([1, 2]));
+}
+
+#[test]
+fn latest_episode_lookup_prefers_exact_names_and_normalizes_metadata_suffixes() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("data.db");
+    create_legacy_data_db(&path);
+    let store = LegacyResourceStore::new(&path);
+    for row in [
+        resource_input("jojo-s7", "JOJO的奇妙冒险 (2012) Season 7", 7, 3, "Group"),
+        resource_input("jojo-s6", "JOJO的奇妙冒险 (2012) Season 6", 6, 15, "Group"),
+        resource_input("exact-s1", "Exact Name", 1, 6, "Group"),
+        resource_input("exact-s2", "Exact Name", 2, 8, "Group"),
+        resource_input("example-s2", "Example 第 2 季 (2025)", 2, 4, "Group"),
+    ] {
+        store.insert_ignore_duplicate(&row).unwrap();
+    }
+    let anime_names = vec![
+        "JOJO的奇妙冒险".into(),
+        "Exact Name".into(),
+        "Example".into(),
+    ];
+    let requested_seasons = HashMap::from([
+        ("JOJO的奇妙冒险".to_string(), 7),
+        ("Exact Name".to_string(), 1),
+        ("Example".to_string(), 2),
+    ]);
+
+    let latest = store
+        .find_latest_episodes(&anime_names, &requested_seasons)
+        .unwrap();
+
+    assert_eq!(latest["JOJO的奇妙冒险"], 3);
+    assert_eq!(latest["Exact Name"], 6);
+    assert_eq!(latest["Example"], 4);
+
+    let all_seasons = store
+        .find_latest_episodes(&["Exact Name".into()], &HashMap::new())
+        .unwrap();
+    assert_eq!(all_seasons["Exact Name"], 8);
 }

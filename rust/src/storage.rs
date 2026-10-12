@@ -261,6 +261,267 @@ impl LegacyResourceStore {
         }
         Ok(records)
     }
+
+    pub fn find_latest_episodes(
+        &self,
+        anime_names: &[String],
+        seasons_by_name: &HashMap<String, i64>,
+    ) -> Result<HashMap<String, i64>, LegacyStorageError> {
+        let mut seen = HashSet::new();
+        let names = anime_names
+            .iter()
+            .map(|name| name.trim())
+            .filter(|name| !name.is_empty() && seen.insert(*name))
+            .collect::<Vec<_>>();
+        if names.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let connection = open_readonly_database(&self.path, DATA_SCHEMA)?;
+        let mut latest = HashMap::new();
+        for chunk in names.chunks(SQLITE_PARAMETER_CHUNK_SIZE) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let query = format!(
+                "SELECT anime_name, season, MAX(episode) FROM resources \
+                 WHERE anime_name IN ({placeholders}) AND episode IS NOT NULL \
+                 GROUP BY anime_name, season"
+            );
+            let mut statement = connection.prepare(&query)?;
+            let rows = statement.query_map(params_from_iter(chunk.iter()), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            })?;
+            let mut grouped: HashMap<String, Vec<(Option<i64>, i64)>> = HashMap::new();
+            for row in rows {
+                let (name, season, episode) = row?;
+                grouped.entry(name).or_default().push((season, episode));
+            }
+
+            for name in chunk {
+                let requested_season = seasons_by_name.get(*name);
+                let episode = grouped.get(*name).and_then(|candidates| {
+                    candidates
+                        .iter()
+                        .filter(|(season, _)| {
+                            requested_season.is_none_or(|requested| *season == Some(*requested))
+                        })
+                        .map(|(_, episode)| *episode)
+                        .max()
+                });
+                if let Some(episode) = episode {
+                    latest.insert((*name).to_string(), episode);
+                }
+            }
+        }
+
+        let missing_names = names
+            .iter()
+            .filter(|name| !latest.contains_key(**name))
+            .copied()
+            .collect::<Vec<_>>();
+        if missing_names.is_empty() {
+            return Ok(latest);
+        }
+
+        let mut statement = connection.prepare(
+            "SELECT anime_name, season, episode FROM resources \
+             WHERE anime_name IS NOT NULL AND episode IS NOT NULL",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        let mut normalized: HashMap<String, Vec<(Option<i64>, i64)>> = HashMap::new();
+        for row in rows {
+            let (name, season, episode) = row?;
+            normalized
+                .entry(normalize_series_name(&name))
+                .or_default()
+                .push((season, episode));
+        }
+
+        for name in missing_names {
+            let requested_season = seasons_by_name.get(name);
+            let episode = normalized
+                .get(&normalize_series_name(name))
+                .and_then(|candidates| {
+                    candidates
+                        .iter()
+                        .filter(|(season, _)| {
+                            requested_season.is_none_or(|requested| *season == Some(*requested))
+                        })
+                        .map(|(_, episode)| *episode)
+                        .max()
+                });
+            if let Some(episode) = episode {
+                latest.insert(name.to_string(), episode);
+            }
+        }
+        Ok(latest)
+    }
+}
+
+fn normalize_series_name(name: &str) -> String {
+    let chars = name.chars().collect::<Vec<_>>();
+    let mut without_years = Vec::with_capacity(chars.len());
+    let mut index = 0;
+    while index < chars.len() {
+        if let Some(end) = bracketed_year_end(&chars, index) {
+            index = end;
+        } else {
+            without_years.push(chars[index]);
+            index += 1;
+        }
+    }
+
+    let mut normalized = String::new();
+    index = 0;
+    while index < without_years.len() {
+        if let Some(end) = season_token_end(&without_years, index) {
+            index = end;
+        } else {
+            for lowercase in without_years[index].to_lowercase() {
+                if lowercase.is_alphanumeric() || lowercase == '_' {
+                    normalized.push(lowercase);
+                }
+            }
+            index += 1;
+        }
+    }
+    normalized
+}
+
+fn bracketed_year_end(chars: &[char], start: usize) -> Option<usize> {
+    if !matches!(chars.get(start)?, '（' | '(' | '[' | '【') {
+        return None;
+    }
+    let mut index = start + 1;
+    while chars
+        .get(index)
+        .is_some_and(|character| character.is_whitespace())
+    {
+        index += 1;
+    }
+    for _ in 0..4 {
+        if !chars.get(index).is_some_and(char::is_ascii_digit) {
+            return None;
+        }
+        index += 1;
+    }
+    while chars
+        .get(index)
+        .is_some_and(|character| character.is_whitespace())
+    {
+        index += 1;
+    }
+    if chars
+        .get(index)
+        .is_some_and(|character| matches!(character, '）' | ')' | ']' | '】'))
+    {
+        Some(index + 1)
+    } else {
+        None
+    }
+}
+
+fn season_token_end(chars: &[char], start: usize) -> Option<usize> {
+    if chars.get(start) == Some(&'第') {
+        let mut index = start + 1;
+        while chars
+            .get(index)
+            .is_some_and(|character| character.is_whitespace())
+        {
+            index += 1;
+        }
+        let number_start = index;
+        while chars.get(index).is_some_and(|character| {
+            character.is_ascii_digit()
+                || matches!(
+                    character,
+                    '一' | '二'
+                        | '三'
+                        | '四'
+                        | '五'
+                        | '六'
+                        | '七'
+                        | '八'
+                        | '九'
+                        | '十'
+                        | '百'
+                        | '千'
+                        | '万'
+                )
+        }) {
+            index += 1;
+        }
+        if index == number_start {
+            return None;
+        }
+        while chars
+            .get(index)
+            .is_some_and(|character| character.is_whitespace())
+        {
+            index += 1;
+        }
+        return (chars.get(index) == Some(&'季')).then_some(index + 1);
+    }
+
+    if ascii_word_at(chars, start, "season") {
+        let mut index = start + "season".len();
+        while chars
+            .get(index)
+            .is_some_and(|character| character.is_whitespace())
+        {
+            index += 1;
+        }
+        let digits_start = index;
+        while chars.get(index).is_some_and(char::is_ascii_digit) {
+            index += 1;
+        }
+        if index > digits_start && is_season_boundary(chars.get(index)) {
+            return Some(index);
+        }
+    }
+
+    if chars
+        .get(start)
+        .is_some_and(|character| character.eq_ignore_ascii_case(&'s'))
+    {
+        let mut index = start + 1;
+        while index - start <= 2 && chars.get(index).is_some_and(char::is_ascii_digit) {
+            index += 1;
+        }
+        let digit_count = index - start - 1;
+        if (1..=2).contains(&digit_count) && is_season_boundary(chars.get(index)) {
+            return Some(index);
+        }
+    }
+    None
+}
+
+fn ascii_word_at(chars: &[char], start: usize, word: &str) -> bool {
+    chars.get(start..start + word.len()).is_some_and(|slice| {
+        slice
+            .iter()
+            .zip(word.chars())
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(&expected))
+    })
+}
+
+fn is_season_boundary(character: Option<&char>) -> bool {
+    character.is_none_or(|character| {
+        character.is_whitespace()
+            || matches!(
+                character,
+                '.' | '_' | '(' | ')' | '（' | '）' | '[' | ']' | '【' | '】' | '-'
+            )
+    })
 }
 
 pub struct LegacyTaskMementoStore {
