@@ -61,7 +61,7 @@ fn create_legacy_databases(data_path: &std::path::Path, tasks_path: &std::path::
 }
 
 #[tokio::test]
-async fn ui_state_reads_subscription_progress_and_reports_scanner_as_disabled() {
+async fn ui_state_reads_subscription_progress_and_reports_scanner_as_active() {
     let directory = tempdir().unwrap();
     let config_path = directory.path().join("config.toml");
     let data_path = directory.path().join("data.db");
@@ -95,7 +95,7 @@ async fn ui_state_reads_subscription_progress_and_reports_scanner_as_disabled() 
         state["rss_subscriptions"][0]["download_directory"],
         "/迅雷/videos/番/JOJO的奇妙冒险 (2012)/Season 6"
     );
-    assert_eq!(state["rss_status"]["enabled"], false);
+    assert_eq!(state["rss_status"]["enabled"], true);
     assert_eq!(state["rss_status"]["running"], false);
-    assert_eq!(state["rss_status"]["status"], "disabled");
+    assert_eq!(state["rss_status"]["status"], "idle");
 }

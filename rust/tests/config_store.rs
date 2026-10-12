@@ -1,4 +1,7 @@
-use openlist_ani_rs::config_store::{ConfigDocumentStore, ConfigStoreError};
+use openlist_ani_rs::config_store::{
+    ConfigDocumentStore, ConfigStoreError, UiRssSubscriptionInput,
+};
+use serde_json::json;
 use std::{
     fs,
     sync::{Arc, Barrier},
@@ -117,4 +120,114 @@ fn config_and_lock_files_are_private_on_unix() {
         fs::metadata(lock_path).unwrap().permissions().mode() & 0o777,
         0o600
     );
+}
+
+#[test]
+fn add_subscription_preserves_legacy_urls_and_rejects_duplicates() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("config.toml");
+    fs::write(
+        &path,
+        "# keep me\n[backend]\nhost = \"127.0.0.1\"\nport = 19004\n\n[rss]\nurls = [\"https://legacy.example/rss\"]\n",
+    )
+    .unwrap();
+    let store = ConfigDocumentStore::new(&path);
+    let before = store.ui_subscriptions().unwrap();
+    assert_eq!(before.len(), 1);
+    assert!(
+        before
+            .iter()
+            .any(|item| item["url"] == "https://legacy.example/rss")
+    );
+
+    let added = UiRssSubscriptionInput {
+        url: "https://new.example/rss".to_string(),
+        name: "New Show".to_string(),
+        anime_name: "New Show filename".to_string(),
+        download_directory_name: "New Show folder".to_string(),
+        episode_offset: 12,
+        filename_season_override: 1,
+        directory_season_override: 6,
+        tmdb_id: Some(283938),
+        poster_url: "https://images.example/poster.jpg".to_string(),
+        season: 8,
+        exclude_patterns: vec!["(?i)1080p".to_string()],
+    };
+    store.add_ui_subscription(added.clone()).unwrap();
+    let subscriptions = store.ui_subscriptions().unwrap();
+    assert_eq!(subscriptions.len(), 2);
+    let new = subscriptions
+        .iter()
+        .find(|item| item["url"] == "https://new.example/rss")
+        .unwrap();
+    assert_eq!(new["anime_name"], "New Show filename");
+    assert_eq!(new["episode_offset"], 12);
+    assert_eq!(new["season"], 8);
+    assert_eq!(new["enabled"], true);
+    assert_eq!(new["completed"], false);
+    assert_eq!(new["exclude_patterns"], json!(["(?i)1080p"]));
+    assert!(fs::read_to_string(&path).unwrap().contains("# keep me"));
+
+    let original = fs::read(&path).unwrap();
+    let duplicate = UiRssSubscriptionInput {
+        url: "https://legacy.example/rss".to_string(),
+        ..added
+    };
+    assert!(matches!(
+        store.add_ui_subscription(duplicate),
+        Err(ConfigStoreError::DuplicateSubscription)
+    ));
+    assert_eq!(fs::read(path).unwrap(), original);
+}
+
+#[test]
+fn subscription_controls_and_correction_preserve_state_rules() {
+    let directory = tempdir().unwrap();
+    let path = directory.path().join("config.toml");
+    write_config(&path);
+    let store = ConfigDocumentStore::new(&path);
+    let url = "https://example.invalid/rss";
+
+    store.set_ui_subscription_completed(url, true).unwrap();
+    let item = store.ui_subscriptions().unwrap().remove(0);
+    assert_eq!(item["completed"], true);
+    assert_eq!(item["enabled"], true);
+
+    store.set_ui_subscription_enabled(url, false).unwrap();
+    assert_eq!(store.ui_subscriptions().unwrap()[0]["enabled"], false);
+    store.set_ui_subscription_enabled(url, true).unwrap();
+    let item = store.ui_subscriptions().unwrap().remove(0);
+    assert_eq!(item["enabled"], true);
+    assert_eq!(item["completed"], false);
+
+    let corrected_url = "https://example.invalid/corrected";
+    store
+        .correct_ui_subscription(
+            url,
+            UiRssSubscriptionInput {
+                url: corrected_url.to_string(),
+                name: "Corrected Show".to_string(),
+                anime_name: "Corrected filename".to_string(),
+                download_directory_name: "Corrected folder".to_string(),
+                episode_offset: 12,
+                filename_season_override: 1,
+                directory_season_override: 6,
+                tmdb_id: None,
+                poster_url: String::new(),
+                season: 8,
+                exclude_patterns: vec![],
+            },
+        )
+        .unwrap();
+    let item = store.ui_subscriptions().unwrap().remove(0);
+    assert_eq!(item["url"], corrected_url);
+    assert_eq!(item["anime_name"], "Corrected filename");
+    assert_eq!(item["completed"], false);
+
+    store.remove_ui_subscription(corrected_url).unwrap();
+    assert!(store.ui_subscriptions().unwrap().is_empty());
+    assert!(matches!(
+        store.remove_ui_subscription(corrected_url),
+        Err(ConfigStoreError::SubscriptionNotFound)
+    ));
 }

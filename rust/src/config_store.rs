@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use toml_edit::{DocumentMut, Table};
+use toml_edit::{ArrayOfTables, DocumentMut, Table};
 use uuid::Uuid;
 
 use crate::config::{AppConfig, ConfigError};
@@ -76,6 +76,21 @@ pub struct UiSettingsUpdate {
     pub metadata_parser_provider: Option<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct UiRssSubscriptionInput {
+    pub url: String,
+    pub name: String,
+    pub anime_name: String,
+    pub download_directory_name: String,
+    pub episode_offset: i64,
+    pub filename_season_override: i64,
+    pub directory_season_override: i64,
+    pub tmdb_id: Option<i64>,
+    pub poster_url: String,
+    pub season: i64,
+    pub exclude_patterns: Vec<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigStoreError {
     #[error("configuration file operation failed")]
@@ -88,6 +103,10 @@ pub enum ConfigStoreError {
     DurabilityUncertain(#[source] std::io::Error),
     #[error("configuration section has an unexpected shape")]
     InvalidShape,
+    #[error("RSS subscription already exists")]
+    DuplicateSubscription,
+    #[error("RSS subscription was not found")]
+    SubscriptionNotFound,
 }
 
 pub struct ConfigDocumentStore {
@@ -201,23 +220,24 @@ impl ConfigDocumentStore {
             .into_iter()
             .flatten()
             .filter_map(toml_edit::Value::as_str)
+            .map(str::to_string)
             .map(|url| {
                 json!({
-                    "url": url,
-                    "name": "",
-                    "anime_name": "",
-                    "download_directory_name": "",
-                    "episode_offset": 0,
-                    "filename_season_override": 0,
-                    "directory_season_override": 0,
-                    "enabled": true,
-                    "completed": false,
-                    "tmdb_id": null,
-                    "poster_url": "",
-                    "season": 1,
-                    "exclude_patterns": [],
-                    "latest_episode": null,
-                    "download_directory": ""
+                "url": url,
+                "name": "",
+                "anime_name": "",
+                "download_directory_name": "",
+                "episode_offset": 0,
+                "filename_season_override": 0,
+                "directory_season_override": 0,
+                "enabled": true,
+                "completed": false,
+                "tmdb_id": null,
+                "poster_url": "",
+                "season": 1,
+                "exclude_patterns": [],
+                "latest_episode": null,
+                "download_directory": ""
                 })
             })
             .collect();
@@ -318,6 +338,150 @@ impl ConfigDocumentStore {
         })
     }
 
+    pub fn add_ui_subscription(
+        &self,
+        subscription: UiRssSubscriptionInput,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        let revision = self.load()?.revision;
+        self.update_checked(&revision, |document| {
+            let rss = get_or_insert_table(document.as_table_mut(), "rss")?;
+            let subscriptions = ensure_subscription_array(rss)?;
+            if subscriptions.iter().any(|item| {
+                item.get("url").and_then(toml_edit::Item::as_str) == Some(subscription.url.as_str())
+            }) {
+                return Err(ConfigStoreError::DuplicateSubscription);
+            }
+
+            let mut item = Table::new();
+            item.insert("enabled", toml_edit::value(true));
+            item.insert("completed", toml_edit::value(false));
+            write_subscription_fields(&mut item, subscription);
+            subscriptions.push(item);
+            Ok(())
+        })
+    }
+
+    pub fn set_ui_subscription_enabled(
+        &self,
+        url: &str,
+        enabled: bool,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        self.update_subscription(url, move |item| {
+            item.insert("enabled", toml_edit::value(enabled));
+            if enabled {
+                item.insert("completed", toml_edit::value(false));
+            }
+            Ok(())
+        })
+    }
+
+    pub fn set_ui_subscription_completed(
+        &self,
+        url: &str,
+        completed: bool,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        self.update_subscription(url, move |item| {
+            item.insert("completed", toml_edit::value(completed));
+            if !completed {
+                item.insert("enabled", toml_edit::value(true));
+            }
+            Ok(())
+        })
+    }
+
+    pub fn set_ui_subscription_exclusions(
+        &self,
+        url: &str,
+        patterns: Vec<String>,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        self.update_subscription(url, move |item| {
+            let mut values = toml_edit::Array::new();
+            for pattern in patterns {
+                values.push(pattern);
+            }
+            item.insert("exclude_patterns", toml_edit::value(values));
+            Ok(())
+        })
+    }
+
+    pub fn remove_ui_subscription(&self, url: &str) -> Result<ConfigSnapshot, ConfigStoreError> {
+        let url = url.to_string();
+        let revision = self.load()?.revision;
+        self.update_checked(&revision, move |document| {
+            let rss = get_or_insert_table(document.as_table_mut(), "rss")?;
+            let subscriptions = ensure_subscription_array(rss)?;
+            let index = subscriptions
+                .iter()
+                .position(|item| item.get("url").and_then(toml_edit::Item::as_str) == Some(&url))
+                .ok_or(ConfigStoreError::SubscriptionNotFound)?;
+            subscriptions.remove(index);
+            Ok(())
+        })
+    }
+
+    pub fn correct_ui_subscription(
+        &self,
+        original_url: &str,
+        subscription: UiRssSubscriptionInput,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        let original_url = original_url.to_string();
+        let revision = self.load()?.revision;
+        self.update_checked(&revision, move |document| {
+            let rss = get_or_insert_table(document.as_table_mut(), "rss")?;
+            let subscriptions = ensure_subscription_array(rss)?;
+            if subscriptions.iter().any(|item| {
+                item.get("url").and_then(toml_edit::Item::as_str) == Some(subscription.url.as_str())
+                    && item.get("url").and_then(toml_edit::Item::as_str)
+                        != Some(original_url.as_str())
+            }) {
+                return Err(ConfigStoreError::DuplicateSubscription);
+            }
+            let item = subscriptions
+                .iter_mut()
+                .find(|item| {
+                    item.get("url").and_then(toml_edit::Item::as_str) == Some(original_url.as_str())
+                })
+                .ok_or(ConfigStoreError::SubscriptionNotFound)?;
+            write_subscription_fields(item, subscription);
+            Ok(())
+        })
+    }
+
+    pub fn update_ui_global_exclusions(
+        &self,
+        patterns: Vec<String>,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        let revision = self.load()?.revision;
+        self.update_checked(&revision, move |document| {
+            let rss = get_or_insert_table(document.as_table_mut(), "rss")?;
+            let filter = get_or_insert_table(rss, "filter")?;
+            let mut values = toml_edit::Array::new();
+            for pattern in patterns {
+                values.push(pattern);
+            }
+            filter.insert("exclude_patterns", toml_edit::value(values));
+            Ok(())
+        })
+    }
+
+    fn update_subscription(
+        &self,
+        url: &str,
+        edit: impl FnOnce(&mut Table) -> Result<(), ConfigStoreError>,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        let url = url.to_string();
+        let revision = self.load()?.revision;
+        self.update_checked(&revision, move |document| {
+            let rss = get_or_insert_table(document.as_table_mut(), "rss")?;
+            let subscriptions = ensure_subscription_array(rss)?;
+            let item = subscriptions
+                .iter_mut()
+                .find(|item| item.get("url").and_then(toml_edit::Item::as_str) == Some(&url))
+                .ok_or(ConfigStoreError::SubscriptionNotFound)?;
+            edit(item)
+        })
+    }
+
     pub fn update(
         &self,
         expected_revision: &str,
@@ -379,6 +543,69 @@ fn get_or_insert_table<'a>(
         .entry(key)
         .or_insert(toml_edit::Item::Table(Table::new()));
     entry.as_table_mut().ok_or(ConfigStoreError::InvalidShape)
+}
+
+fn ensure_subscription_array(rss: &mut Table) -> Result<&mut ArrayOfTables, ConfigStoreError> {
+    let legacy_urls = rss
+        .get("urls")
+        .and_then(toml_edit::Item::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(toml_edit::Value::as_str)
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let item = rss
+        .entry("subscriptions")
+        .or_insert(toml_edit::Item::ArrayOfTables(ArrayOfTables::new()));
+    let subscriptions = item
+        .as_array_of_tables_mut()
+        .ok_or(ConfigStoreError::InvalidShape)?;
+    for url in legacy_urls {
+        if !subscriptions
+            .iter()
+            .any(|item| item.get("url").and_then(toml_edit::Item::as_str) == Some(&url))
+        {
+            let mut legacy = Table::new();
+            legacy.insert("url", toml_edit::value(url));
+            legacy.insert("season", toml_edit::value(1));
+            subscriptions.push(legacy);
+        }
+    }
+    Ok(subscriptions)
+}
+
+fn write_subscription_fields(item: &mut Table, subscription: UiRssSubscriptionInput) {
+    item.insert("url", toml_edit::value(subscription.url));
+    item.insert("name", toml_edit::value(subscription.name));
+    item.insert("anime_name", toml_edit::value(subscription.anime_name));
+    item.insert(
+        "download_directory_name",
+        toml_edit::value(subscription.download_directory_name),
+    );
+    item.insert(
+        "episode_offset",
+        toml_edit::value(subscription.episode_offset),
+    );
+    item.insert(
+        "filename_season_override",
+        toml_edit::value(subscription.filename_season_override),
+    );
+    item.insert(
+        "directory_season_override",
+        toml_edit::value(subscription.directory_season_override),
+    );
+    item.insert("poster_url", toml_edit::value(subscription.poster_url));
+    item.insert("season", toml_edit::value(subscription.season));
+    let mut patterns = toml_edit::Array::new();
+    for pattern in subscription.exclude_patterns {
+        patterns.push(pattern);
+    }
+    item.insert("exclude_patterns", toml_edit::value(patterns));
+    if let Some(tmdb_id) = subscription.tmdb_id {
+        item.insert("tmdb_id", toml_edit::value(tmdb_id));
+    } else {
+        item.remove("tmdb_id");
+    }
 }
 
 fn preserve_value_decor(original: &DocumentMut, updated: &mut DocumentMut) {

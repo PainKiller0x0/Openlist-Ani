@@ -2,6 +2,7 @@
 pub struct ParsedReleaseTitle {
     pub anime_name: String,
     pub season: i32,
+    pub explicit_season: bool,
     pub episode: i32,
     pub fansub: Option<String>,
     pub quality: Option<String>,
@@ -13,8 +14,9 @@ pub fn parse_release_title(title: &str) -> Option<ParsedReleaseTitle> {
     if title.is_empty() {
         return None;
     }
-    let (anime_end, season, episode) = find_season_episode(title)
-        .or_else(|| find_trailing_episode(title).map(|(end, episode)| (end, 1, episode)))?;
+    let (anime_end, season, episode, explicit_season) = find_season_episode(title)
+        .map(|(end, season, episode)| (end, season, episode, true))
+        .or_else(|| find_trailing_episode(title).map(|(end, episode)| (end, 1, episode, false)))?;
     let (anime_name, fansub) = clean_anime_name(&title[..anime_end]);
     if anime_name.is_empty() {
         return None;
@@ -35,6 +37,7 @@ pub fn parse_release_title(title: &str) -> Option<ParsedReleaseTitle> {
     Some(ParsedReleaseTitle {
         anime_name,
         season,
+        explicit_season,
         episode,
         fansub,
         quality,
@@ -215,6 +218,7 @@ mod tests {
     fn parses_common_release_title_forms_without_guessing_episode_numbers() {
         let sxe = parse_release_title("[Group] Example Show S02E03 [1080p][CHT]").unwrap();
         assert_eq!(sxe.anime_name, "Example Show");
+        assert!(sxe.explicit_season);
         assert_eq!((sxe.season, sxe.episode), (2, 3));
         assert_eq!(sxe.fansub.as_deref(), Some("Group"));
         assert_eq!(sxe.quality.as_deref(), Some("1080p"));
@@ -226,6 +230,7 @@ mod tests {
         let trailing = parse_release_title("[ANi] 作品名 - 03 [1080P]").unwrap();
         assert_eq!(trailing.anime_name, "作品名");
         assert_eq!((trailing.season, trailing.episode), (1, 3));
+        assert!(!trailing.explicit_season);
         assert_eq!(trailing.fansub.as_deref(), Some("ANi"));
 
         assert!(parse_release_title("[Group] 作品名 [1080P]").is_none());

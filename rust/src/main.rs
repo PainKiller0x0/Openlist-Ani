@@ -19,6 +19,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .recover_download_workers()
         .await
         .map_err(std::io::Error::other)?;
+    state.start_periodic_rss_scanner();
     let app = router(state).into_make_service_with_connect_info::<SocketAddr>();
 
     axum::serve(listener, app)

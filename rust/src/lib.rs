@@ -10,6 +10,7 @@ pub mod naming;
 pub mod openlist;
 pub mod release_parser;
 pub mod rss;
+pub mod rss_scan;
 pub mod storage;
 pub mod torrent;
 

@@ -61,19 +61,50 @@ pub struct SubmittedDownload {
     pub payload_json: String,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct DownloadOverrides {
+    pub source_url: Option<String>,
+    pub anime_name: Option<String>,
+    pub directory_name: Option<String>,
+    pub episode_offset: i64,
+    pub season: Option<i64>,
+    pub filename_season: Option<i64>,
+    pub directory_season: Option<i64>,
+}
+
 pub async fn submit_download(
     databases: LegacyDbPaths,
     settings: DownloadRuntimeSettings,
     title: &str,
     download_url: &str,
 ) -> Result<SubmittedDownload, DownloadServiceError> {
+    submit_download_with_overrides(
+        databases,
+        settings,
+        title,
+        download_url,
+        DownloadOverrides::default(),
+    )
+    .await
+}
+
+pub async fn submit_download_with_overrides(
+    databases: LegacyDbPaths,
+    settings: DownloadRuntimeSettings,
+    title: &str,
+    download_url: &str,
+    overrides: DownloadOverrides,
+) -> Result<SubmittedDownload, DownloadServiceError> {
     let title = title.trim();
     let download_url = download_url.trim();
     if !valid_download_url(download_url) {
         return Err(DownloadServiceError::InvalidUrl);
     }
-    let parsed = parse_release_title(title).ok_or(DownloadServiceError::InvalidTitle)?;
-    let plan = build_download_plan(&settings, &parsed, ".mp4")?;
+    let parsed = apply_release_overrides(
+        parse_release_title(title).ok_or(DownloadServiceError::InvalidTitle)?,
+        &overrides,
+    )?;
+    let plan = build_download_plan(&settings, &parsed, ".mp4", &overrides)?;
     let client = OpenListClient::new(&settings.openlist_url, &settings.token)
         .map_err(|_| DownloadServiceError::InvalidConfiguration)?;
     let task_id = Uuid::new_v4().to_string();
@@ -89,14 +120,15 @@ pub async fn submit_download(
         "release": {
             "title": title,
             "download_url": download_url,
-            "source_url": null,
-            "anime_name_override": null,
-            "download_directory_name_override": null,
-            "episode_offset": 0,
+            "source_url": overrides.source_url,
+            "anime_name_override": overrides.anime_name,
+            "download_directory_name_override": overrides.directory_name,
+            "episode_offset": overrides.episode_offset,
             "anime_name": parsed.anime_name,
             "season": parsed.season,
-            "filename_season_override": null,
-            "directory_season_override": null,
+            "season_explicit": parsed.explicit_season,
+            "filename_season_override": overrides.filename_season,
+            "directory_season_override": overrides.directory_season,
             "episode": parsed.episode,
             "fansub": parsed.fansub,
             "quality": parsed.quality,
@@ -383,7 +415,8 @@ async fn run_download_worker_inner(
             rename_format: required_string(&payload, "rename_format")?,
             ..settings.clone()
         };
-        let plan = build_download_plan(&frozen_settings, &parsed, extension)?;
+        let overrides = download_overrides_from_payload(&payload["release"]);
+        let plan = build_download_plan(&frozen_settings, &parsed, extension, &overrides)?;
         let materialization = prepare_materialization(
             &client,
             &frozen_settings.download_path,
@@ -753,6 +786,7 @@ fn release_from_payload(
             .as_i64()
             .and_then(|value| i32::try_from(value).ok())
             .ok_or(DownloadServiceError::InvalidPlan)?,
+        explicit_season: release["season_explicit"].as_bool().unwrap_or(false),
         episode: release["episode"]
             .as_i64()
             .and_then(|value| i32::try_from(value).ok())
@@ -773,17 +807,22 @@ fn build_download_plan(
     settings: &DownloadRuntimeSettings,
     release: &crate::release_parser::ParsedReleaseTitle,
     extension: &str,
+    overrides: &DownloadOverrides,
 ) -> Result<DownloadPlan, DownloadServiceError> {
     build_plan(
         &settings.download_path,
         NamingInput {
             anime_name: release.anime_name.clone(),
-            anime_name_override: None,
-            download_directory_name_override: None,
+            anime_name_override: overrides.anime_name.clone(),
+            download_directory_name_override: overrides.directory_name.clone(),
             season: Some(release.season),
             episode: Some(release.episode),
-            filename_season_override: None,
-            directory_season_override: None,
+            filename_season_override: overrides
+                .filename_season
+                .and_then(|value| i32::try_from(value).ok()),
+            directory_season_override: overrides
+                .directory_season
+                .and_then(|value| i32::try_from(value).ok()),
             extension: Some(extension.to_string()),
             version: Some(1),
             rename_format: Some(settings.rename_format.clone()),
@@ -793,6 +832,44 @@ fn build_download_plan(
         },
     )
     .map_err(|_| DownloadServiceError::InvalidPlan)
+}
+
+fn download_overrides_from_payload(release: &Value) -> DownloadOverrides {
+    DownloadOverrides {
+        source_url: release["source_url"].as_str().map(str::to_string),
+        anime_name: release["anime_name_override"].as_str().map(str::to_string),
+        directory_name: release["download_directory_name_override"]
+            .as_str()
+            .map(str::to_string),
+        episode_offset: release["episode_offset"].as_i64().unwrap_or(0),
+        season: None,
+        filename_season: release["filename_season_override"].as_i64(),
+        directory_season: release["directory_season_override"].as_i64(),
+    }
+}
+
+fn apply_release_overrides(
+    mut release: crate::release_parser::ParsedReleaseTitle,
+    overrides: &DownloadOverrides,
+) -> Result<crate::release_parser::ParsedReleaseTitle, DownloadServiceError> {
+    release.episode = i32::try_from(i64::from(release.episode) - overrides.episode_offset)
+        .ok()
+        .filter(|episode| *episode > 0)
+        .ok_or(DownloadServiceError::InvalidTitle)?;
+    if !release.explicit_season {
+        if let Some(season) = overrides.season {
+            release.season =
+                i32::try_from(season).map_err(|_| DownloadServiceError::InvalidPlan)?;
+        }
+    }
+    if let Some(name) = overrides
+        .anime_name
+        .as_deref()
+        .filter(|name| !name.trim().is_empty())
+    {
+        release.anime_name = name.trim().to_string();
+    }
+    Ok(release)
 }
 
 fn valid_download_url(value: &str) -> bool {
@@ -844,4 +921,78 @@ fn now_rfc3339() -> String {
         day_seconds % 3_600 / 60,
         day_seconds % 60
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DownloadOverrides, apply_release_overrides, build_download_plan,
+        download_overrides_from_payload,
+    };
+    use crate::release_parser::parse_release_title;
+
+    #[test]
+    fn rss_overrides_apply_episode_offset_and_keep_explicit_season() {
+        let overrides = DownloadOverrides {
+            anime_name: Some("套马的汉子".to_string()),
+            directory_name: Some("JOJO的奇妙冒险 (2012)".to_string()),
+            episode_offset: 12,
+            season: Some(2),
+            filename_season: Some(1),
+            directory_season: Some(6),
+            ..DownloadOverrides::default()
+        };
+        let trailing = apply_release_overrides(
+            parse_release_title("[Group] Original Show - 15 [1080P]").unwrap(),
+            &overrides,
+        )
+        .unwrap();
+        let explicit = apply_release_overrides(
+            parse_release_title("[Group] Clevatess S02E13 [1080P]").unwrap(),
+            &overrides,
+        )
+        .unwrap();
+        assert_eq!((trailing.season, trailing.episode), (2, 3));
+        assert_eq!(trailing.anime_name, "套马的汉子");
+        assert_eq!((explicit.season, explicit.episode), (2, 1));
+
+        let plan = build_download_plan(
+            &crate::config_store::DownloadRuntimeSettings {
+                openlist_url: "http://127.0.0.1:5244".to_string(),
+                download_path: "/迅雷/videos/番".to_string(),
+                token: String::new(),
+                offline_download_tool: "qBittorrent".to_string(),
+                rename_format: "{anime_name} - S{season:02d}E{episode:02d}".to_string(),
+            },
+            &trailing,
+            ".mkv",
+            &overrides,
+        )
+        .unwrap();
+        assert_eq!(plan.filename, "套马的汉子 - S01E03.mkv");
+        assert_eq!(
+            plan.directory,
+            "/迅雷/videos/番/JOJO的奇妙冒险 (2012)/Season 6"
+        );
+    }
+
+    #[test]
+    fn download_naming_overrides_survive_worker_recovery_payload() {
+        let overrides = download_overrides_from_payload(&serde_json::json!({
+            "source_url": "https://example.test/rss",
+            "anime_name_override": "套马的汉子",
+            "download_directory_name_override": "JOJO",
+            "episode_offset": 12,
+            "filename_season_override": 1,
+            "directory_season_override": 6
+        }));
+        assert_eq!(
+            overrides.source_url.as_deref(),
+            Some("https://example.test/rss")
+        );
+        assert_eq!(overrides.anime_name.as_deref(), Some("套马的汉子"));
+        assert_eq!(overrides.episode_offset, 12);
+        assert_eq!(overrides.filename_season, Some(1));
+        assert_eq!(overrides.directory_season, Some(6));
+    }
 }
