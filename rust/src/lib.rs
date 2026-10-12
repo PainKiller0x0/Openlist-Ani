@@ -6,13 +6,16 @@ pub mod config_store;
 pub mod download_service;
 pub mod download_workflow;
 pub mod http;
+pub mod metadata;
 pub mod mikan;
 pub mod naming;
 pub mod openlist;
 pub mod release_parser;
 pub mod rss;
 pub mod rss_scan;
+pub mod runtime;
 pub mod storage;
+pub mod task_controls;
 pub mod torrent;
 
 pub use auth::AuthSettings;

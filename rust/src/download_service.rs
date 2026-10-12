@@ -34,6 +34,8 @@ pub enum DownloadServiceError {
     Duplicate(String),
     #[error("OpenList rejected the download request")]
     Rejected,
+    #[error("OpenList task failed: {0}")]
+    RemoteTaskFailed(String),
     #[error(
         "OpenList accepted the request but returned no task ID; it will not be retried automatically"
     )]
@@ -48,6 +50,8 @@ pub enum DownloadServiceError {
     Storage(#[from] LegacyStorageError),
     #[error("blocking storage operation failed")]
     StorageWorker,
+    #[error("torrent metadata could not be read; nothing was submitted to OpenList")]
+    Torrent(#[from] crate::torrent::TorrentError),
     #[error("download plan is invalid")]
     InvalidPlan,
     #[error("download task no longer exists")]
@@ -107,6 +111,13 @@ pub async fn submit_download_with_overrides(
     let plan = build_download_plan(&settings, &parsed, ".mp4", &overrides)?;
     let client = OpenListClient::new(&settings.openlist_url, &settings.token)
         .map_err(|_| DownloadServiceError::InvalidConfiguration)?;
+    let submitted_url = if reqwest::Url::parse(download_url)
+        .is_ok_and(|url| url.path().to_ascii_lowercase().ends_with(".torrent"))
+    {
+        crate::torrent::torrent_url_to_magnet(download_url).await?
+    } else {
+        download_url.to_string()
+    };
     let task_id = Uuid::new_v4().to_string();
     let now = now_rfc3339();
     let temporary_root = join_path(
@@ -142,6 +153,7 @@ pub async fn submit_download_with_overrides(
             "downloader_type": "openlist",
             "payload": {
                 "temp_path": temporary_root,
+                "submitted_url": submitted_url,
                 "workflow_state": "init"
             }
         },
@@ -192,7 +204,7 @@ pub async fn submit_download_with_overrides(
     );
     let remote_tasks = client
         .add_offline_download(
-            &[download_url.to_string()],
+            &[submitted_url],
             &temporary_root,
             &settings.offline_download_tool,
             &download_name,
@@ -281,7 +293,9 @@ pub async fn recover_submitted_tasks(
         else {
             continue;
         };
-        if operation.state != "submitted" {
+        if operation.state != "submitted"
+            || !matches!(record.state.as_str(), "pending" | "downloading")
+        {
             continue;
         }
         let Ok(mut payload) = serde_json::from_str::<Value>(&record.payload_json) else {
@@ -327,6 +341,7 @@ pub async fn run_download_worker(
                 tokio::time::sleep(WORKER_POLL_INTERVAL).await;
             }
             Err(error) => {
+                crate::runtime::record("ERROR", &format!("Download {task_id} failed: {error}"));
                 let _ = fail_task(&databases, &task_id, &error.to_string()).await;
                 return;
             }
@@ -468,6 +483,14 @@ async fn run_download_worker_inner(
         if !completed {
             return Err(DownloadServiceError::Uncertain);
         }
+        crate::runtime::record(
+            "INFO",
+            &format!(
+                "Download completed: {}",
+                payload["output_path"].as_str().unwrap_or_default()
+            ),
+        );
+        notify_smartstrm(databases, &payload).await;
     }
     Ok(())
 }
@@ -491,7 +514,7 @@ async fn wait_download_complete(
         if let Some(task) = undone.iter().find(|task| task.id == remote_id) {
             missing = 0;
             if remote_failed(task) {
-                return Err(DownloadServiceError::Rejected);
+                return Err(remote_task_error(task));
             }
             if task.progress.is_some() {
                 payload["downloader"]["payload"]["progress"] = task.progress.clone().unwrap();
@@ -510,7 +533,7 @@ async fn wait_download_complete(
                     return Ok(());
                 }
                 if remote_failed(task) {
-                    return Err(DownloadServiceError::Rejected);
+                    return Err(remote_task_error(task));
                 }
             } else {
                 missing += 1;
@@ -521,6 +544,56 @@ async fn wait_download_complete(
         }
         tokio::time::sleep(WORKER_POLL_INTERVAL).await;
     }
+}
+
+async fn notify_smartstrm(databases: &LegacyDbPaths, payload: &Value) {
+    let Some(root) = databases.data_db.parent().and_then(std::path::Path::parent) else {
+        return;
+    };
+    let Some(document) = std::fs::read_to_string(root.join("config.toml"))
+        .ok()
+        .and_then(|source| source.parse::<toml_edit::DocumentMut>().ok())
+    else {
+        return;
+    };
+    let Some(settings) = document
+        .get("smartstrm")
+        .and_then(toml_edit::Item::as_table)
+    else {
+        return;
+    };
+    if settings.get("enabled").and_then(toml_edit::Item::as_bool) != Some(true) {
+        return;
+    }
+    let Some(url) = settings
+        .get("trigger_url")
+        .and_then(toml_edit::Item::as_str)
+        .filter(|url| !url.is_empty())
+    else {
+        return;
+    };
+    let seconds = settings
+        .get("timeout_seconds")
+        .and_then(|value| {
+            value
+                .as_float()
+                .or_else(|| value.as_integer().map(|value| value as f64))
+        })
+        .unwrap_or(2.0)
+        .clamp(0.1, 10.0);
+    let result = reqwest::Client::new().post(url)
+        .timeout(Duration::from_secs_f64(seconds))
+        .json(&json!({"event": "download.completed", "task_id": payload["task_id"], "path": payload["output_path"], "base_path": payload["base_path"]}))
+        .send().await;
+    let (level, message) = if result.is_ok_and(|response| response.status().is_success()) {
+        ("INFO", "SmartStrm trigger accepted")
+    } else {
+        (
+            "WARNING",
+            "SmartStrm trigger unavailable; the download is already complete",
+        )
+    };
+    crate::runtime::record(level, message);
 }
 
 async fn wait_transfer_complete(
@@ -534,7 +607,7 @@ async fn wait_transfer_complete(
         if let Some(task) = matching {
             missing = 0;
             if remote_failed(task) {
-                return Err(DownloadServiceError::Rejected);
+                return Err(remote_task_error(task));
             }
             if task_succeeded(task) {
                 return Ok(());
@@ -548,7 +621,7 @@ async fn wait_transfer_complete(
             return if task_succeeded(task) {
                 Ok(())
             } else {
-                Err(DownloadServiceError::Rejected)
+                Err(remote_task_error(task))
             };
         }
         missing += 1;
@@ -581,6 +654,20 @@ fn task_succeeded(task: &OfflineTask) -> bool {
             .state
             .as_str()
             .is_some_and(|state| state.eq_ignore_ascii_case("succeeded"))
+}
+
+fn remote_task_error(task: &OfflineTask) -> DownloadServiceError {
+    let message = task
+        .error
+        .as_deref()
+        .or(task.status.as_deref())
+        .unwrap_or("remote download failed");
+    let reason = if message.contains("版权") {
+        "应版权方要求，无法添加".to_string()
+    } else {
+        message.chars().take(200).collect()
+    };
+    DownloadServiceError::RemoteTaskFailed(reason)
 }
 
 fn remote_failed(task: &OfflineTask) -> bool {
@@ -703,8 +790,8 @@ async fn fail_task(
     let Ok(mut record) = load_task(databases, task_id).await else {
         return Ok(());
     };
-    set_task_error(&mut record, message);
     let state = record.state.clone();
+    set_task_error(&mut record, message);
     let updated = record.updated_at.clone();
     save_record(databases, record).await?;
     if state == "downloading" {
@@ -896,11 +983,16 @@ fn join_path(root: &str, child: &str) -> String {
     }
 }
 
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
+    timestamp_after(0)
+}
+
+pub(crate) fn timestamp_after(delay_seconds: u64) -> String {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
-        .as_secs() as i64;
+        .as_secs()
+        .saturating_add(delay_seconds) as i64;
     let days = seconds.div_euclid(86_400);
     let day_seconds = seconds.rem_euclid(86_400);
     let z = days + 719_468;

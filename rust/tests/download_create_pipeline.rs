@@ -26,6 +26,8 @@ struct OpenListState {
     renamed: bool,
     moved: bool,
     cleaned: bool,
+    notified: bool,
+    stale_destination: bool,
 }
 
 fn create_legacy_databases(data_path: &std::path::Path, tasks_path: &std::path::Path) {
@@ -77,6 +79,20 @@ async fn create_download_runs_openlist_materialization_and_resource_commit() {
     let stub = OpenListStub::default();
     let app =
         Router::new()
+            .route(
+                "/trigger",
+                post(
+                    |State(stub): State<OpenListStub>, Json(body): Json<Value>| async move {
+                        assert_eq!(body["event"], "download.completed");
+                        assert_eq!(
+                            body["path"],
+                            "/library/Example Show/Season 1/Example Show - S01E02.mkv"
+                        );
+                        stub.0.lock().unwrap().notified = true;
+                        Json(json!({"ok": true}))
+                    },
+                ),
+            )
             .route(
                 "/api/fs/add_offline_download",
                 post(
@@ -145,13 +161,18 @@ async fn create_download_runs_openlist_materialization_and_resource_commit() {
                 post(
                     |State(stub): State<OpenListStub>, Json(body): Json<Value>| async move {
                         let path = body["path"].as_str().unwrap();
-                        let state = stub.0.lock().unwrap();
+                        let mut state = stub.0.lock().unwrap();
                         let content = if state.target_directory.as_deref() == Some(path) {
-                            state
+                            if state.stale_destination {
+                                state.stale_destination = false;
+                                json!(null)
+                            } else {
+                                state
                                 .target_filename
                                 .as_ref()
                                 .map(|name| json!([{"name": name, "is_dir": false, "size": 4096}]))
                                 .unwrap_or_else(|| json!([]))
+                            }
                         } else if state.temporary_path.as_deref() == Some(path) {
                             state
                                 .source_filename
@@ -190,6 +211,7 @@ async fn create_download_runs_openlist_materialization_and_resource_commit() {
                         state.target_filename = body["names"][0].as_str().map(str::to_string);
                         state.source_filename = None;
                         state.moved = true;
+                        state.stale_destination = true;
                         Json(json!({"code": 200}))
                     },
                 ),
@@ -211,14 +233,15 @@ async fn create_download_runs_openlist_materialization_and_resource_commit() {
     });
 
     let directory = tempdir().unwrap();
-    let data_path = directory.path().join("data.db");
-    let tasks_path = directory.path().join("task_mementos.db");
+    std::fs::create_dir(directory.path().join("data")).unwrap();
+    let data_path = directory.path().join("data/data.db");
+    let tasks_path = directory.path().join("data/task_mementos.db");
     let config_path = directory.path().join("config.toml");
     create_legacy_databases(&data_path, &tasks_path);
     std::fs::write(
         &config_path,
         format!(
-            "[openlist]\nurl = \"http://{address}\"\ndownload_path = \"/library\"\ntoken = \"test-token\"\noffline_download_tool = \"qBittorrent\"\nrename_format = \"{{anime_name}} - S{{season:02d}}E{{episode:02d}}\"\n"
+            "[openlist]\nurl = \"http://{address}\"\ndownload_path = \"/library\"\ntoken = \"test-token\"\noffline_download_tool = \"qBittorrent\"\nrename_format = \"{{anime_name}} - S{{season:02d}}E{{episode:02d}}\"\n[smartstrm]\nenabled = true\ntrigger_url = \"http://{address}/trigger\"\n"
         ),
     )
     .unwrap();
@@ -257,6 +280,7 @@ async fn create_download_runs_openlist_materialization_and_resource_commit() {
         if operations
             .iter()
             .any(|operation| operation.state == "completed")
+            && stub.0.lock().unwrap().notified
         {
             break;
         }
@@ -268,7 +292,7 @@ async fn create_download_runs_openlist_materialization_and_resource_commit() {
 
     let stub = stub.0.lock().unwrap();
     assert_eq!(stub.download_requests, 1);
-    assert!(stub.renamed && stub.moved && stub.cleaned);
+    assert!(stub.renamed && stub.moved && stub.cleaned && stub.notified);
     assert_eq!(
         stub.target_directory.as_deref(),
         Some("/library/Example Show/Season 1")

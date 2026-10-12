@@ -114,6 +114,9 @@ pub struct ConfigDocumentStore {
 }
 
 impl ConfigDocumentStore {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
     pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }
@@ -400,6 +403,27 @@ impl ConfigDocumentStore {
                 values.push(pattern);
             }
             item.insert("exclude_patterns", toml_edit::value(values));
+            Ok(())
+        })
+    }
+
+    pub fn set_ui_subscription_metadata(
+        &self,
+        url: &str,
+        metadata: crate::metadata::RssMetadata,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        self.update_subscription(url, move |item| {
+            item.insert("name", toml_edit::value(metadata.name));
+            item.insert("poster_url", toml_edit::value(metadata.poster_url));
+            if let Some(id) = metadata.tmdb_id {
+                item.insert("tmdb_id", toml_edit::value(id));
+            }
+            if let Some(season) = metadata.season {
+                item.insert("season", toml_edit::value(season));
+            }
+            if let Some(year) = metadata.year {
+                item.insert("year", toml_edit::value(year));
+            }
             Ok(())
         })
     }

@@ -52,6 +52,39 @@ pub struct TorrentFile {
 }
 
 pub async fn resolve_torrent(url: &str) -> Result<ResolveTorrentResponse, TorrentError> {
+    let body = fetch_torrent(url).await?;
+    let metadata = parse_torrent(&body).ok_or(TorrentError::InvalidMetadata)?;
+    Ok(ResolveTorrentResponse {
+        success: true,
+        message: "Resolved title from .torrent file metadata.".to_string(),
+        title: Some(metadata.title),
+        source: Some("torrent_file".to_string()),
+        file_count: Some(metadata.files.len()),
+        files: metadata.files,
+    })
+}
+
+pub async fn torrent_url_to_magnet(url: &str) -> Result<String, TorrentError> {
+    let body = fetch_torrent(url).await?;
+    torrent_blob_to_magnet(&body)
+        .map(|(_, magnet)| magnet)
+        .ok_or(TorrentError::InvalidMetadata)
+}
+
+pub fn torrent_blob_to_magnet(blob: &[u8]) -> Option<(String, String)> {
+    let (metadata, hash) = parse_torrent_with_hash(blob)?;
+    let mut magnet = Url::parse(&format!("magnet:?xt=urn:btih:{hash}")).ok()?;
+    {
+        let mut pairs = magnet.query_pairs_mut();
+        pairs.append_pair("dn", &metadata.title);
+        for tracker in &metadata.trackers {
+            pairs.append_pair("tr", tracker);
+        }
+    }
+    Some((metadata.title, magnet.to_string()))
+}
+
+async fn fetch_torrent(url: &str) -> Result<Vec<u8>, TorrentError> {
     let url = Url::parse(url.trim()).map_err(|_| TorrentError::InvalidUrl)?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
         return Err(TorrentError::InvalidUrl);
@@ -84,15 +117,7 @@ pub async fn resolve_torrent(url: &str) -> Result<ResolveTorrentResponse, Torren
         body.extend_from_slice(&chunk);
     }
 
-    let metadata = parse_torrent(&body).ok_or(TorrentError::InvalidMetadata)?;
-    Ok(ResolveTorrentResponse {
-        success: true,
-        message: "Resolved title from .torrent file metadata.".to_string(),
-        title: Some(metadata.title),
-        source: Some("torrent_file".to_string()),
-        file_count: Some(metadata.files.len()),
-        files: metadata.files,
-    })
+    Ok(body)
 }
 
 fn client() -> &'static reqwest::Client {
@@ -109,6 +134,7 @@ fn client() -> &'static reqwest::Client {
 struct TorrentMetadata {
     title: String,
     files: Vec<TorrentFile>,
+    trackers: Vec<String>,
 }
 
 fn parse_torrent(input: &[u8]) -> Option<TorrentMetadata> {
@@ -197,7 +223,28 @@ fn parse_torrent_with_hash(input: &[u8]) -> Option<(TorrentMetadata, String)> {
     };
     let (start, end) = info_range?;
     let info_hash = format!("{:x}", Sha1::digest(&input[start..end]));
-    Some((TorrentMetadata { title, files }, info_hash))
+    let mut trackers = Vec::new();
+    if let Some(announce) = get_bytes(&root, b"announce") {
+        trackers.push(String::from_utf8_lossy(announce).into_owned());
+    }
+    if let Some(tiers) = get_list_value(&root, b"announce-list") {
+        for tier in tiers.iter().filter_map(get_list) {
+            for tracker in tier.iter().filter_map(get_bytes_value) {
+                let tracker = String::from_utf8_lossy(tracker).into_owned();
+                if !trackers.contains(&tracker) {
+                    trackers.push(tracker);
+                }
+            }
+        }
+    }
+    Some((
+        TorrentMetadata {
+            title,
+            files,
+            trackers,
+        },
+        info_hash,
+    ))
 }
 
 enum BencodeValue {
@@ -341,6 +388,37 @@ fn get_list_value<'a>(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn converts_torrent_url_into_real_hash_magnet_before_submission() {
+        use axum::{Router, routing::get};
+        let blob = include_bytes!("../fixtures/torrent-metadata-seed-v1.torrent");
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(
+                listener,
+                Router::new().route("/test.torrent", get(|| async { blob.as_slice() })),
+            )
+            .await
+            .unwrap();
+        });
+        let magnet = super::torrent_url_to_magnet(&format!("http://{address}/test.torrent"))
+            .await
+            .unwrap();
+        assert!(magnet.starts_with("magnet:?xt=urn:btih:"));
+        let (_, expected_hash) = super::parse_torrent_with_hash(blob).unwrap();
+        let parsed = reqwest::Url::parse(&magnet).unwrap();
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|(key, value)| key == "xt" && value == format!("urn:btih:{expected_hash}"))
+        );
+        assert!(
+            parsed
+                .query_pairs()
+                .any(|(key, value)| key == "dn" && value == "synthetic-nonzero.mp4")
+        );
+    }
     use super::{MAX_TORRENT_BYTES, parse_torrent, parse_torrent_with_hash};
 
     #[test]

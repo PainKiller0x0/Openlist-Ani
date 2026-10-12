@@ -11,7 +11,7 @@ use std::{
 use axum::{
     Json, Router,
     body::{Body, to_bytes},
-    extract::{ConnectInfo, Path, Request, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, Query, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware::{self, Next},
     response::{Html, IntoResponse, Response},
@@ -55,6 +55,7 @@ pub struct AppState {
     download_workers: Arc<Mutex<HashSet<String>>>,
     rss_scan_lock: Arc<tokio::sync::Mutex<()>>,
     rss_scan_running: Arc<AtomicBool>,
+    rss_scan_status: Arc<Mutex<serde_json::Value>>,
 }
 
 impl AppState {
@@ -72,6 +73,9 @@ impl AppState {
             download_workers: Arc::new(Mutex::new(HashSet::new())),
             rss_scan_lock: Arc::new(tokio::sync::Mutex::new(())),
             rss_scan_running: Arc::new(AtomicBool::new(false)),
+            rss_scan_status: Arc::new(Mutex::new(
+                json!({"last_scan_started_at": null, "last_scan_finished_at": null, "next_scan_at": null}),
+            )),
         }
     }
 
@@ -114,12 +118,19 @@ impl AppState {
             loop {
                 run_rss_scan_logged(&state).await;
                 let seconds = state.rss_poll_interval().await.unwrap_or(300).max(60) as u64;
+                if let Ok(mut status) = state.rss_scan_status.lock() {
+                    status["next_scan_at"] =
+                        json!(crate::download_service::timestamp_after(seconds));
+                }
                 tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
             }
         });
     }
 
     fn schedule_rss_scan(&self) {
+        if std::env::var("OPENLIST_ANI_BACKGROUND_ENABLED").as_deref() == Ok("0") {
+            return;
+        }
         let state = self.clone();
         tokio::spawn(async move {
             run_rss_scan_logged(&state).await;
@@ -178,10 +189,13 @@ pub fn router(state: AppState) -> Router {
             get(ui_settings).post(ui_update_settings),
         )
         .route("/api/ui/state", get(ui_state))
+        .route("/api/ui/logs", get(ui_logs))
+        .route("/api/restart", post(restart_service))
         .route("/api/ui/mikan/search", post(ui_mikan_search))
         .route("/api/ui/mikan/groups", post(ui_mikan_groups))
         .route("/api/ui/mikan/rss", post(ui_mikan_rss))
         .route("/api/ui/rss/preview", post(ui_preview_rss))
+        .route("/api/ui/rss/metadata", post(ui_rss_metadata))
         .route("/api/ui/rss", post(ui_add_rss).delete(ui_remove_rss))
         .route("/api/ui/rss/toggle", post(ui_toggle_rss))
         .route("/api/ui/rss/completed", post(ui_set_rss_completed))
@@ -192,8 +206,21 @@ pub fn router(state: AppState) -> Router {
         .route("/api/ui/scan", post(ui_scan_now))
         .route("/api/downloads", get(list_downloads).post(create_download))
         .route("/api/downloads/{task_id}", get(get_download))
+        .route("/api/ui/downloads/{task_id}/retry", post(retry_download))
+        .route(
+            "/api/ui/downloads/{task_id}/archive",
+            post(archive_download),
+        )
+        .route("/api/downloads/{task_id}/retry", post(retry_download))
+        .route("/api/downloads/{task_id}/archive", post(archive_download))
         .route("/api/parse_rss", post(parse_rss_endpoint))
         .route("/api/resolve_torrent", post(resolve_torrent_endpoint))
+        .route("/api/resolve_magnet", post(resolve_magnet_endpoint))
+        .route(
+            "/api/ui/torrent",
+            post(upload_torrent).layer(DefaultBodyLimit::max(10 * 1024 * 1024)),
+        )
+        .route("/api/ui/uploads/{filename}", get(uploaded_torrent))
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state, auth_gate))
 }
@@ -314,6 +341,104 @@ fn download_service_error(error: DownloadServiceError) -> Response {
             StatusCode::INTERNAL_SERVER_ERROR,
             "could not create download task",
         ),
+    }
+}
+
+#[derive(Deserialize)]
+struct ResolveMagnetRequest {
+    magnet: String,
+}
+
+async fn resolve_magnet_endpoint(
+    Json(request): Json<ResolveMagnetRequest>,
+) -> Json<ResolveTorrentResponse> {
+    let title = reqwest::Url::parse(&request.magnet)
+        .ok()
+        .filter(|url| url.scheme() == "magnet")
+        .and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "dn")
+                .map(|(_, value)| value.into_owned())
+        })
+        .filter(|title| !title.trim().is_empty());
+    Json(match title {
+        Some(title) => ResolveTorrentResponse {
+            success: true,
+            message: "Read magnet display name".into(),
+            title: Some(title),
+            source: Some("magnet_dn".into()),
+            file_count: None,
+            files: vec![],
+        },
+        None => ResolveTorrentResponse::failure("磁力链接没有可信标题，请提供标题或上传种子文件"),
+    })
+}
+
+fn decode_header(request: &Request, name: &str) -> String {
+    request
+        .headers()
+        .get(name)
+        .and_then(|header| header.to_str().ok())
+        .and_then(|value| {
+            reqwest::Url::parse(&format!("http://localhost/?value={value}"))
+                .ok()
+                .and_then(|url| {
+                    url.query_pairs()
+                        .next()
+                        .map(|(_, value)| value.into_owned())
+                })
+        })
+        .unwrap_or_default()
+}
+
+async fn upload_torrent(State(state): State<AppState>, request: Request) -> Response {
+    if !request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/x-bittorrent"))
+        || !decode_header(&request, "x-filename")
+            .to_ascii_lowercase()
+            .ends_with(".torrent")
+    {
+        return api_error(StatusCode::BAD_REQUEST, "请上传 .torrent 文件");
+    }
+    let requested_title = decode_header(&request, "x-title");
+    let blob = match to_bytes(request.into_body(), 10 * 1024 * 1024).await {
+        Ok(blob) => blob,
+        Err(_) => return api_error(StatusCode::PAYLOAD_TOO_LARGE, "种子文件不能超过 10 MiB"),
+    };
+    let Some((title, magnet)) = crate::torrent::torrent_blob_to_magnet(&blob) else {
+        return api_error(StatusCode::BAD_REQUEST, "种子文件无法解析");
+    };
+    let title = if requested_title.trim().is_empty() {
+        title
+    } else {
+        requested_title
+    };
+    create_download(
+        State(state),
+        Json(CreateDownloadRequest {
+            title,
+            download_url: magnet,
+        }),
+    )
+    .await
+}
+
+async fn uploaded_torrent(State(state): State<AppState>, Path(filename): Path<String>) -> Response {
+    let safe = filename
+        .strip_suffix(".torrent")
+        .is_some_and(|stem| stem.len() == 32 && stem.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    if !safe {
+        return api_error(StatusCode::NOT_FOUND, "Not found");
+    }
+    let Some(directory) = state.databases.data_db.parent() else {
+        return api_error(StatusCode::NOT_FOUND, "Not found");
+    };
+    match std::fs::read(directory.join("uploads").join(filename)) {
+        Ok(blob) => ([(header::CONTENT_TYPE, "application/x-bittorrent")], blob).into_response(),
+        Err(_) => api_error(StatusCode::NOT_FOUND, "Not found"),
     }
 }
 
@@ -556,6 +681,9 @@ fn normalize_ui_http_url(value: &str, label: &str) -> Result<String, String> {
 async fn run_rss_scan(state: &AppState) -> Result<RssScanReport, String> {
     let _scan = state.rss_scan_lock.lock().await;
     state.rss_scan_running.store(true, Ordering::Relaxed);
+    if let Ok(mut status) = state.rss_scan_status.lock() {
+        status["last_scan_started_at"] = json!(crate::download_service::now_rfc3339());
+    }
     let _running = RssScanRunning(Arc::clone(&state.rss_scan_running));
     let config = state
         .config
@@ -582,23 +710,47 @@ async fn run_rss_scan(state: &AppState) -> Result<RssScanReport, String> {
     for task in &report.submitted {
         state.start_download_worker(task.task_id.clone(), runtime.clone());
     }
+    if let Ok(mut status) = state.rss_scan_status.lock() {
+        status["last_scan_finished_at"] = json!(crate::download_service::now_rfc3339());
+    }
+    crate::runtime::record(
+        if report.errors.is_empty() {
+            "INFO"
+        } else {
+            "WARNING"
+        },
+        &format!(
+            "RSS scan completed: {} feeds, {} entries, {} submitted, {} skipped, {} errors",
+            report.feeds_scanned,
+            report.entries_seen,
+            report.submitted.len(),
+            report.skipped,
+            report.errors.len()
+        ),
+    );
     Ok(report)
 }
 
 async fn run_rss_scan_logged(state: &AppState) {
     match run_rss_scan(state).await {
         Ok(report) if !report.errors.is_empty() => {
-            eprintln!("RSS scan partially failed: {}", report.errors.join("; "));
+            crate::runtime::record(
+                "WARNING",
+                &format!("RSS scan partially failed: {}", report.errors.join("; ")),
+            );
         }
         Ok(report) if !report.submitted.is_empty() => {
-            eprintln!(
-                "RSS scan submitted {} download task(s); skipped {} duplicate/invalid item(s)",
-                report.submitted.len(),
-                report.skipped
+            crate::runtime::record(
+                "INFO",
+                &format!(
+                    "RSS scan submitted {} download task(s); skipped {} duplicate/invalid item(s)",
+                    report.submitted.len(),
+                    report.skipped
+                ),
             );
         }
         Ok(_) => {}
-        Err(error) => eprintln!("RSS scan failed: {error}"),
+        Err(error) => crate::runtime::record("ERROR", &format!("RSS scan failed: {error}")),
     }
 }
 
@@ -782,10 +934,22 @@ async fn ui_state(State(state): State<AppState>) -> Response {
     };
     let databases = Arc::clone(&state.databases);
     let rss_scan_running = state.rss_scan_running.load(Ordering::Relaxed);
+    let status = state
+        .rss_scan_status
+        .lock()
+        .map(|value| value.clone())
+        .unwrap_or_default();
     match tokio::task::spawn_blocking(move || load_ui_state(&config, &databases, rss_scan_running))
         .await
     {
-        Ok(Ok(state)) => Json(state).into_response(),
+        Ok(Ok(mut state)) => {
+            if let (Some(destination), Some(source)) =
+                (state["rss_status"].as_object_mut(), status.as_object())
+            {
+                destination.extend(source.clone());
+            }
+            Json(state).into_response()
+        }
         _ => api_error(StatusCode::INTERNAL_SERVER_ERROR, "could not read UI state"),
     }
 }
@@ -867,6 +1031,31 @@ fn subscription_identity(item: &serde_json::Value) -> Option<&str> {
         })
 }
 
+#[derive(Deserialize)]
+struct LogQuery {
+    limit: Option<usize>,
+}
+
+async fn ui_logs(Query(query): Query<LogQuery>) -> Json<serde_json::Value> {
+    let limit = query.limit.unwrap_or(300).clamp(1, 1_000);
+    Json(json!({"lines": crate::runtime::lines(limit), "limit": limit}))
+}
+
+async fn restart_service() -> Response {
+    if std::env::var("OPENLIST_ANI_ALLOW_RESTART").as_deref() != Ok("1") {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "服务重启仅在 systemd 部署下可用",
+        );
+    }
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        crate::runtime::record("INFO", "Restart requested from web UI");
+        crate::runtime::request_restart();
+    });
+    Json(json!({"success": true, "message": "服务正在重启，请稍后刷新页面"})).into_response()
+}
+
 async fn list_downloads(State(state): State<AppState>) -> Response {
     let database = Arc::clone(&state.databases);
     match tokio::task::spawn_blocking(move || {
@@ -918,6 +1107,138 @@ async fn get_download(State(state): State<AppState>, Path(task_id): Path<String>
     }
 }
 
+async fn archive_download(State(state): State<AppState>, Path(task_id): Path<String>) -> Response {
+    let path = state.databases.task_mementos_db.clone();
+    match tokio::task::spawn_blocking(move || {
+        crate::task_controls::archive_failed_task(path, &task_id)
+    })
+    .await
+    {
+        Ok(Ok(_)) => Json(json!({"success": true, "message": "失败任务已存档"})).into_response(),
+        Ok(Err(error)) => api_error(
+            StatusCode::from_u16(error.status_code()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            &error.to_string(),
+        ),
+        Err(_) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "任务操作失败"),
+    }
+}
+
+async fn retry_download(State(state): State<AppState>, Path(task_id): Path<String>) -> Response {
+    let Some(config) = &state.config else {
+        return api_error(StatusCode::SERVICE_UNAVAILABLE, "配置不可用");
+    };
+    let settings = match config.download_runtime_settings() {
+        Ok(settings) => settings,
+        Err(_) => return api_error(StatusCode::SERVICE_UNAVAILABLE, "下载配置不可用"),
+    };
+    let path = state.databases.task_mementos_db.clone();
+    let retry = match tokio::task::spawn_blocking(move || {
+        crate::task_controls::retry_failed_task(path, &task_id)
+    })
+    .await
+    {
+        Ok(Ok(retry)) => retry,
+        Ok(Err(error)) => {
+            return api_error(
+                StatusCode::from_u16(error.status_code())
+                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                &error.to_string(),
+            );
+        }
+        Err(_) => return api_error(StatusCode::INTERNAL_SERVER_ERROR, "任务操作失败"),
+    };
+    let record = match retry.action {
+        crate::task_controls::RetryAction::Resume => retry.task,
+        crate::task_controls::RetryAction::Resubmit => {
+            let Ok(payload) = serde_json::from_str::<serde_json::Value>(&retry.task.payload_json)
+            else {
+                return api_error(StatusCode::INTERNAL_SERVER_ERROR, "任务数据无效");
+            };
+            let release = &payload["release"];
+            let overrides = crate::download_service::DownloadOverrides {
+                source_url: release["source_url"].as_str().map(str::to_string),
+                anime_name: release["anime_name_override"]
+                    .as_str()
+                    .or_else(|| release["anime_name"].as_str())
+                    .map(str::to_string),
+                directory_name: release["download_directory_name_override"]
+                    .as_str()
+                    .map(str::to_string),
+                episode_offset: release["episode_offset"].as_i64().unwrap_or(0),
+                season: release["season"].as_i64(),
+                filename_season: release["filename_season_override"].as_i64(),
+                directory_season: release["directory_season_override"].as_i64(),
+            };
+            match crate::download_service::submit_download_with_overrides(
+                (*state.databases).clone(),
+                settings.clone(),
+                release["title"].as_str().unwrap_or_default(),
+                release["download_url"].as_str().unwrap_or_default(),
+                overrides,
+            )
+            .await
+            {
+                Ok(task) => {
+                    let path = state.databases.task_mementos_db.clone();
+                    let old_id = retry.task.task_id;
+                    let _ = tokio::task::spawn_blocking(move || {
+                        crate::task_controls::archive_failed_task(path, &old_id)
+                    })
+                    .await;
+                    crate::storage::LegacyMementoRecord {
+                        task_id: task.task_id,
+                        state: task.state,
+                        updated_at: String::new(),
+                        payload_json: task.payload_json,
+                    }
+                }
+                Err(error) => return download_service_error(error),
+            }
+        }
+    };
+    state.start_download_worker(record.task_id.clone(), settings);
+    Json(json!({"success": true, "message": "下载任务已恢复", "task": task_response(&record.task_id, &record.state, &record.payload_json).ok().flatten()})).into_response()
+}
+
+async fn ui_rss_metadata(
+    State(state): State<AppState>,
+    Json(request): Json<UiRssRequest>,
+) -> Response {
+    if let Some(message) = validate_ui_rss_request(&request) {
+        return api_error(StatusCode::UNPROCESSABLE_ENTITY, &message);
+    }
+    let Some(config) = &state.config else {
+        return api_error(StatusCode::SERVICE_UNAVAILABLE, "配置不可用");
+    };
+    let metadata = match tokio::time::timeout(
+        std::time::Duration::from_secs(45),
+        crate::metadata::resolve_rss_metadata(
+            config.path(),
+            &request.url,
+            &request.name,
+            request.tmdb_id,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(metadata)) => metadata,
+        Ok(Err(error)) => return api_error(StatusCode::BAD_GATEWAY, &error.to_string()),
+        Err(_) => return api_error(StatusCode::GATEWAY_TIMEOUT, "媒体元数据读取超时"),
+    };
+    let config = Arc::clone(config);
+    let url = request.url.clone();
+    let save = metadata.clone();
+    match tokio::task::spawn_blocking(move || config.set_ui_subscription_metadata(&url, save)).await
+    {
+        Ok(Ok(_)) | Ok(Err(ConfigStoreError::SubscriptionNotFound)) => {}
+        _ => return api_error(StatusCode::CONFLICT, "配置已改变，请刷新后重试"),
+    }
+    let mut response = serde_json::to_value(metadata).unwrap_or_default();
+    response["success"] = json!(true);
+    response["url"] = json!(request.url);
+    Json(response).into_response()
+}
+
 #[derive(Deserialize)]
 struct ParseRssRequest {
     url: String,
@@ -953,7 +1274,7 @@ struct UiRssRequest {
 
 async fn ui_preview_rss(
     State(state): State<AppState>,
-    Json(request): Json<UiRssRequest>,
+    Json(mut request): Json<UiRssRequest>,
 ) -> Response {
     if let Some(message) = validate_ui_rss_request(&request) {
         return api_error(StatusCode::UNPROCESSABLE_ENTITY, &message);
@@ -964,6 +1285,22 @@ async fn ui_preview_rss(
             "configuration is unavailable",
         );
     };
+    if request.anime_name.trim().is_empty() && request.tmdb_id.is_none() {
+        if let Ok(Ok(metadata)) = tokio::time::timeout(
+            std::time::Duration::from_secs(45),
+            crate::metadata::resolve_rss_metadata(config.path(), &request.url, &request.name, None),
+        )
+        .await
+        {
+            if request.name.trim().is_empty() {
+                request.name = metadata.name;
+            }
+            request.anime_name = metadata.anime_name;
+            request.season = request.season.or(metadata.season);
+            request.tmdb_id = metadata.tmdb_id;
+            request.poster_url = metadata.poster_url;
+        }
+    }
     let settings = match config.ui_settings() {
         Ok(settings) => settings,
         Err(_) => {
@@ -1051,7 +1388,7 @@ async fn ui_preview_rss(
                 let plan = build_plan(
                     &settings.download_path,
                     NamingInput {
-                        anime_name: release.anime_name,
+                        anime_name: anime_name.clone().unwrap_or(release.anime_name),
                         anime_name_override: non_empty(Some(request.anime_name.clone())),
                         download_directory_name_override: non_empty(Some(
                             request.download_directory_name.clone(),

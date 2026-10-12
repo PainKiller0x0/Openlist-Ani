@@ -58,6 +58,51 @@ fn create_legacy_databases(data_path: &std::path::Path, tasks_path: &std::path::
 }
 
 #[tokio::test]
+async fn periodic_scan_does_not_resubmit_a_previously_failed_url() {
+    let server = Router::new().route("/feed", get(|| async {
+        "<rss><channel><item><title>[Group] Show - 01 [1080P]</title><enclosure url=\"magnet:?xt=urn:btih:refused\"/></item></channel></rss>"
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, server).await.unwrap();
+    });
+    let directory = tempdir().unwrap();
+    let data_path = directory.path().join("data.db");
+    let tasks_path = directory.path().join("tasks.db");
+    create_legacy_databases(&data_path, &tasks_path);
+    let payload =
+        json!({"state": "failed", "release": {"download_url": "magnet:?xt=urn:btih:refused"}});
+    Connection::open(&tasks_path)
+        .unwrap()
+        .execute(
+            "INSERT INTO task_mementos VALUES ('refused','failed','2026-10-12',?1)",
+            [payload.to_string()],
+        )
+        .unwrap();
+    let report = scan_subscriptions(
+        LegacyDbPaths {
+            data_db: data_path,
+            task_mementos_db: tasks_path,
+        },
+        DownloadRuntimeSettings {
+            openlist_url: "http://127.0.0.1:1".into(),
+            download_path: "/library".into(),
+            token: String::new(),
+            offline_download_tool: "Thunder".into(),
+            rename_format: "{anime_name} - S{season:02d}E{episode:02d}".into(),
+        },
+        &[],
+        &[json!({"url": format!("http://{address}/feed"), "name": "Show", "season": 1})],
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.skipped, 1);
+    assert!(report.submitted.is_empty());
+    assert!(report.errors.is_empty());
+}
+
+#[tokio::test]
 async fn scan_applies_subscription_identity_offset_and_database_deduplication() {
     const FEED: &str = r#"<?xml version="1.0"?><rss><channel>
         <item><title>[Group] Original Show - 15 [1080P]</title><enclosure url="magnet:?xt=urn:btih:new" type="application/x-bittorrent"/></item>

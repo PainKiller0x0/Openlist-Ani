@@ -136,6 +136,16 @@ fn find_trailing_episode(title: &str) -> Option<(usize, i32)> {
             break;
         }
         let start = suffix.rfind('[')?;
+        let bracket = &title[start + 1..end - 1];
+        if (1..=3).contains(&bracket.len()) && bracket.bytes().all(|byte| byte.is_ascii_digit()) {
+            let episode = bracket.parse::<i32>().ok()?;
+            if episode > 0 && !matches!(episode, 360 | 480 | 720) {
+                let anime_end = title[..start]
+                    .trim_end_matches([' ', '-', '_', '.', '　'])
+                    .len();
+                return Some((anime_end, episode));
+            }
+        }
         end = title[..start].trim_end().len();
     }
 
@@ -234,5 +244,16 @@ mod tests {
         assert_eq!(trailing.fansub.as_deref(), Some("ANi"));
 
         assert!(parse_release_title("[Group] 作品名 [1080P]").is_none());
+    }
+
+    #[test]
+    fn recognizes_jojo_bracket_episode_without_using_resolution_as_episode() {
+        let release = parse_release_title(
+            "[桜都字幕组] 飙马野郎 JOJO的奇妙冒险 / Steel Ball Run [04][1080P][简繁内封]",
+        )
+        .unwrap();
+        assert_eq!(release.episode, 4);
+        assert!(!release.explicit_season);
+        assert!(parse_release_title("[Group] Show [1080P][720]").is_none());
     }
 }

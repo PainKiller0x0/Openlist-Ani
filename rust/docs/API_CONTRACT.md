@@ -57,9 +57,9 @@ AddRSS/Preview/Correct的字段边界按原Pydantic schema实现：名称<=200�
 
 Rust当前实现的管理路由为`POST /api/ui/rss/toggle`、`/completed`、`/exclude`、`/correct`、`/remove`、`/filter`，以及兼容删除入口`DELETE /api/ui/rss`。添加、修正和恢复追踪会触发后台扫描；暂停、完结、删除和过滤规则变更只影响后续周期扫描，不额外启动一次扫描。所有配置修改均经过revision检查和原子替换。
 
-当前尚未实现的部分必须明确视为迁移缺口：元数据重新识别、TMDB/LLM补全、删除时取消未提交任务、稳定subscription_id、Mikan登录/账号订阅与assistant集成，以及完整网页验收。Rust删除订阅只停止后续追踪，不删除网盘文件，也不取消已提交任务；任务隔离/取消语义补齐前，不得宣称与完整旧流程等价。
+元数据重新识别、TMDB/LLM补全和六个主要页面的真实浏览器验收现已完成。剩余迁移缺口包括删除时取消未提交任务、稳定subscription_id、Mikan登录/账号订阅与assistant集成，以及全部旧接口的完整覆盖。Rust删除订阅只停止后续追踪，不删除网盘文件，也不取消已提交任务；不能宣称与完整旧流程等价。
 
-Rust现已提供`/`、`/login`和`/assets/*`；首页/登录页禁止缓存，登录页和assets在启用鉴权时保持公开，其他网页重定向登录、API返回401。默认从源码树定位网页目录；脱离源码树运行时通过`OPENLIST_ANI_WEB_ROOT`指定现有web目录。该合同测试不等于真实浏览器验收。
+Rust现已提供`/`、`/login`和`/assets/*`；首页/登录页禁止缓存，登录页和assets在启用鉴权时保持公开，其他网页重定向登录、API返回401。默认从源码树定位网页目录；脱离源码树运行时通过`OPENLIST_ANI_WEB_ROOT`指定现有web目录。公网域名的真实浏览器验收见`LIVE_RELEASE.md`。
 
 预览追加字段建议为`download_plan`，同时保留旧字段；要将现有网页预览/详情区域补成能展示**最终文件名、完整路径、逻辑季、文件季、目录季**。
 这是必要可观测性修改，不是重做UI风格。任务列表/详情必须使用冻结计划或实际final_path，不能拿最新配置临时重算。
@@ -91,7 +91,7 @@ X-Title: encodeURIComponent(optional title)
 Body: File bytes
 ```
 
-保留这个协议，否则原网页上传会坏。stream验证真实长度，不能信任Content-Length。
+Rust保留此raw协议，校验实际body长度，不信任Content-Length；当前种子元数据上限统一为10 MiB，超限返回413 JSON。正常种子通常只有数KiB；该上限与旧版50 MB不同，属于明确的资源约束差异。
 解析uploaded bytes后正确转magnet提交；不能将仅本机可访问、需要登录Cookie的HTTP地址交给外部下载器。
 保留GET `/api/ui/uploads/{filename}`接口供旧任务兼容；只允许UUIDhex.torrent格式和专用上传目录，仍受原登录校验，不开放任意文件。
 旧task payload中已有upload URL恢复时，可在授权路径下直接读取对应本地文件并转换，不能公开其访问权限。

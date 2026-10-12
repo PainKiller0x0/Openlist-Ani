@@ -252,6 +252,10 @@ impl OpenListClient {
         if response.get("code").and_then(Value::as_i64) != Some(200) {
             return Err(OpenListError::Rejected);
         }
+        // OpenList encodes an empty directory as content:null on some drivers.
+        if response.pointer("/data/content") == Some(&Value::Null) {
+            return Ok(Vec::new());
+        }
         let files = response
             .pointer("/data/content")
             .and_then(Value::as_array)
@@ -268,6 +272,9 @@ impl OpenListClient {
         let response = self.get_json(path).await?;
         if response.get("code").and_then(Value::as_i64) != Some(200) {
             return Err(OpenListError::Rejected);
+        }
+        if response.get("data") == Some(&Value::Null) {
+            return Ok(Vec::new());
         }
         let tasks = response
             .get("data")
@@ -334,6 +341,32 @@ pub fn normalize_base_url(base_url: &str) -> Result<String, OpenListError> {
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn empty_openlist_directories_and_task_queues_accept_null_content() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let app = Router::new()
+            .route(
+                "/api/fs/list",
+                post(|| async { Json(json!({"code": 200, "data": {"content": null}})) }),
+            )
+            .route(
+                "/api/task/offline_download/undone",
+                get(|| async { Json(json!({"code": 200, "data": null})) }),
+            );
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let client = OpenListClient::new(&format!("http://{address}"), "").unwrap();
+        assert!(client.list_files("/empty").await.unwrap().is_empty());
+        assert!(
+            client
+                .offline_download_tasks(false)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
     use axum::{
         Json, Router,
         extract::State,

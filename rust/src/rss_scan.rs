@@ -141,36 +141,59 @@ pub async fn scan_subscriptions(
         .map(|candidate| candidate.key.clone())
         .collect::<Vec<_>>();
     let data_path = databases.data_db.clone();
+    let titles = candidates
+        .iter()
+        .map(|candidate| candidate.title.clone())
+        .collect::<Vec<_>>();
     let existing = tokio::task::spawn_blocking(move || {
-        LegacyResourceStore::new(data_path).find_releases_by_episodes(&keys)
+        let store = LegacyResourceStore::new(data_path);
+        Ok::<_, crate::storage::LegacyStorageError>((
+            store.find_releases_by_episodes(&keys)?,
+            store.find_existing_titles(&titles)?,
+        ))
     })
     .await
     .map_err(|_| "resource lookup worker failed".to_string())?
     .map_err(|_| "resource database is unavailable".to_string())?;
 
     let task_path = databases.task_mementos_db.clone();
-    let active_tasks =
+    let records =
         tokio::task::spawn_blocking(move || LegacyTaskMementoStore::new(task_path).load_all())
             .await
             .map_err(|_| "task lookup worker failed".to_string())?
-            .map_err(|_| "task database is unavailable".to_string())?
-            .into_iter()
-            .filter(|record| !matches!(record.state.as_str(), "completed" | "failed" | "cancelled"))
-            .filter_map(|record| serde_json::from_str::<Value>(&record.payload_json).ok())
-            .filter_map(|payload| {
-                let release = &payload["release"];
-                Some((
-                    release["anime_name"].as_str()?.to_string(),
-                    release["season"].as_i64()?,
-                    release["episode"].as_i64()?,
-                ))
-            })
-            .collect::<HashSet<_>>();
+            .map_err(|_| "task database is unavailable".to_string())?;
+    // Refused or uncertain tasks require an explicit retry, not a job each scan.
+    let failed_sources = records
+        .iter()
+        .filter(|record| record.state == "failed")
+        .filter_map(|record| serde_json::from_str::<Value>(&record.payload_json).ok())
+        .filter_map(|payload| {
+            payload["release"]["download_url"]
+                .as_str()
+                .map(str::to_string)
+        })
+        .collect::<HashSet<_>>();
+    let active_tasks = records
+        .into_iter()
+        .filter(|record| !matches!(record.state.as_str(), "completed" | "failed" | "cancelled"))
+        .filter_map(|record| serde_json::from_str::<Value>(&record.payload_json).ok())
+        .filter_map(|payload| {
+            let release = &payload["release"];
+            Some((
+                release["anime_name"].as_str()?.to_string(),
+                release["season"].as_i64()?,
+                release["episode"].as_i64()?,
+            ))
+        })
+        .collect::<HashSet<_>>();
 
     for candidate in candidates {
-        if existing
-            .get(&candidate.key)
-            .is_some_and(|releases| !releases.is_empty())
+        if failed_sources.contains(&candidate.download_url)
+            || existing.1.contains(&candidate.title)
+            || existing
+                .0
+                .get(&candidate.key)
+                .is_some_and(|releases| !releases.is_empty())
             || active_tasks.contains(&candidate.key)
         {
             report.skipped += 1;

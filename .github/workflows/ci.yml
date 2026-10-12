@@ -19,6 +19,7 @@ concurrency:
 jobs:
   lint:
     name: CI / Lint
+    if: github.ref_name != 'rust' && github.base_ref != 'rust'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -44,6 +45,7 @@ jobs:
 
   test:
     name: CI / Test
+    if: github.ref_name != 'rust' && github.base_ref != 'rust'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -71,6 +73,14 @@ jobs:
       - name: Install Rust 1.85 toolchain
         run: rustup toolchain install 1.85 --profile minimal --component rustfmt --component clippy
 
+      - name: Check deployment helpers
+        run: |
+          python -m venv /tmp/openlist-ani-deploy-lint
+          /tmp/openlist-ani-deploy-lint/bin/pip install black==26.3.1 ruff==0.15.0
+          /tmp/openlist-ani-deploy-lint/bin/black --target-version py311 --check rust/deploy
+          /tmp/openlist-ani-deploy-lint/bin/ruff check rust/deploy
+          for script in rust/deploy/*.sh; do sh -n "$script"; done
+
       - name: Check formatting
         working-directory: rust
         run: cargo +1.85 fmt --all -- --check
@@ -83,8 +93,13 @@ jobs:
         working-directory: rust
         run: cargo +1.85 clippy --locked --all-targets -- -D warnings
 
+      - name: Build Linux release
+        working-directory: rust
+        run: cargo +1.85 build --locked --release
+
   build:
     name: CI / Build
+    if: github.ref_name != 'rust' && github.base_ref != 'rust'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

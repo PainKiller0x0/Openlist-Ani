@@ -158,14 +158,8 @@ pub async fn execute_materialization(
     if !source_has_final && plan.original_filename != plan.final_filename {
         let source_path = join_path(&plan.source_directory, &plan.original_filename);
         let renamed = client.rename_file(&source_path, &plan.final_filename).await;
-        let refreshed = client.list_files(&plan.source_directory).await?;
-        if !refreshed
-            .iter()
-            .any(|file| !file.is_dir && file.name == plan.final_filename)
-        {
-            if renamed.is_err() {
-                return Err(DownloadWorkflowError::ResolveConflict);
-            }
+        if !wait_for_file(client, &plan.source_directory, &plan.final_filename).await? {
+            let _ = renamed;
             return Err(DownloadWorkflowError::ResolveConflict);
         }
     }
@@ -191,12 +185,7 @@ pub async fn execute_materialization(
         }
     }
 
-    if !client
-        .list_files(&plan.target_directory)
-        .await?
-        .iter()
-        .any(|file| !file.is_dir && file.name == plan.final_filename)
-    {
+    if !wait_for_file(client, &plan.target_directory, &plan.final_filename).await? {
         return Err(DownloadWorkflowError::MoveFile);
     }
 
@@ -204,6 +193,28 @@ pub async fn execute_materialization(
         path: join_path(&plan.target_directory, &plan.final_filename),
         cleanup_succeeded: cleanup_task_directory(client, temporary_root).await,
     })
+}
+
+async fn wait_for_file(
+    client: &OpenListClient,
+    directory: &str,
+    filename: &str,
+) -> Result<bool, DownloadWorkflowError> {
+    // Cloud rename/move may return HTTP 200 before refreshed listings catch up.
+    for attempt in 0..30 {
+        if client
+            .list_files(directory)
+            .await?
+            .iter()
+            .any(|file| !file.is_dir && file.name == filename)
+        {
+            return Ok(true);
+        }
+        if attempt < 29 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+    Ok(false)
 }
 
 async fn cleanup_task_directory(client: &OpenListClient, path: &str) -> bool {
