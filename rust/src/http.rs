@@ -15,7 +15,9 @@ use serde_json::json;
 
 use crate::{
     auth::AuthSettings,
-    config_store::ConfigDocumentStore,
+    config_store::{ConfigDocumentStore, ConfigStoreError, UiSettingsUpdate},
+    naming::validate_rename_format,
+    openlist::OpenListClient,
     storage::{LegacyDbPaths, LegacyResourceStore, LegacyTaskMementoStore, check_legacy_databases},
 };
 
@@ -65,7 +67,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/session", get(auth_session))
         .route("/api/auth/login", post(auth_login))
         .route("/api/auth/logout", post(auth_logout))
-        .route("/api/ui/settings", get(ui_settings))
+        .route(
+            "/api/ui/settings",
+            get(ui_settings).post(ui_update_settings),
+        )
         .route("/api/ui/state", get(ui_state))
         .route("/api/downloads", get(list_downloads))
         .route("/api/downloads/{task_id}", get(get_download))
@@ -111,6 +116,231 @@ async fn ui_settings(State(state): State<AppState>) -> Response {
             "could not read UI settings",
         ),
     }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct UiSettingsUpdateRequest {
+    global_exclude_patterns: String,
+    openlist_url: Option<String>,
+    llm_provider_type: Option<String>,
+    llm_api_key: Option<String>,
+    llm_base_url: Option<String>,
+    llm_model: Option<String>,
+    tmdb_language: Option<String>,
+    metadata_parser_provider: Option<String>,
+    download_path: Option<String>,
+    rename_format: Option<String>,
+    poll_interval_seconds: Option<i64>,
+    max_download_retries: Option<i64>,
+    mikan_base_url: Option<String>,
+}
+
+async fn ui_update_settings(
+    State(state): State<AppState>,
+    Json(request): Json<UiSettingsUpdateRequest>,
+) -> Response {
+    let Some(config) = state.config else {
+        return api_error(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "configuration is unavailable",
+        );
+    };
+    if let Some(message) = validate_settings_request(&request) {
+        return api_error(StatusCode::UNPROCESSABLE_ENTITY, &message);
+    }
+    let context = match config.openlist_validation_context() {
+        Ok(context) => context,
+        Err(_) => {
+            return api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not read configuration",
+            );
+        }
+    };
+    let current = match config.ui_settings() {
+        Ok(settings) => settings,
+        Err(_) => {
+            return api_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "could not read configuration",
+            );
+        }
+    };
+
+    let candidate_url = match request.openlist_url.as_deref() {
+        Some(value) => match OpenListClient::new(value.trim(), &context.token) {
+            Ok(client) => client.base_url().to_string(),
+            Err(error) => return api_error(StatusCode::BAD_REQUEST, &error.to_string()),
+        },
+        None => context.base_url.clone(),
+    };
+    let needs_openlist_validation =
+        request.openlist_url.is_some() || request.download_path.is_some();
+    let validated_path = if needs_openlist_validation {
+        let client = match OpenListClient::new(&candidate_url, &context.token) {
+            Ok(client) => client,
+            Err(error) => return api_error(StatusCode::BAD_REQUEST, &error.to_string()),
+        };
+        if request.openlist_url.is_some()
+            && !client
+                .validate_endpoint(&context.offline_download_tool)
+                .await
+        {
+            return api_error(
+                StatusCode::BAD_REQUEST,
+                &format!("无法连接或验证 OpenList：{candidate_url}"),
+            );
+        }
+        let path = request
+            .download_path
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or(&context.download_path);
+        let (valid, result) = client.validate_path(path).await;
+        if !valid {
+            return api_error(StatusCode::BAD_REQUEST, &result);
+        }
+        Some(result)
+    } else {
+        None
+    };
+    if let Some(format) = request.rename_format.as_deref() {
+        if validate_rename_format(format.trim()).is_err() {
+            return api_error(StatusCode::BAD_REQUEST, "重命名规则无效");
+        }
+    }
+    let mikan_base_url = match request.mikan_base_url.as_deref() {
+        Some(value) => match normalize_ui_http_url(value, "Mikan 地址") {
+            Ok(value) => Some(value),
+            Err(message) => return api_error(StatusCode::BAD_REQUEST, &message),
+        },
+        None => None,
+    };
+    let global_exclude_patterns = split_exclude_patterns(&request.global_exclude_patterns);
+    let changes = UiSettingsUpdate {
+        global_exclude_patterns,
+        openlist_url: request.openlist_url.map(|_| candidate_url),
+        download_path: request
+            .download_path
+            .map(|_| validated_path.unwrap_or_default()),
+        rename_format: request.rename_format.map(|value| value.trim().to_string()),
+        poll_interval_seconds: request.poll_interval_seconds,
+        max_download_retries: request.max_download_retries,
+        mikan_base_url: mikan_base_url.clone(),
+        llm_provider_type: non_empty(request.llm_provider_type),
+        llm_api_key: non_empty(request.llm_api_key),
+        llm_base_url: non_empty(request.llm_base_url)
+            .map(|value| value.trim_end_matches('/').to_string()),
+        llm_model: non_empty(request.llm_model),
+        tmdb_language: non_empty(request.tmdb_language),
+        metadata_parser_provider: non_empty(request.metadata_parser_provider),
+    };
+    match config.update_ui_settings(&context.revision, changes) {
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({
+                "success": true,
+                "message": "设置已保存；LLM/解析器相关修改将在服务重启后生效。",
+                "requires_restart": true,
+                "mikan_base_url": mikan_base_url.unwrap_or(current.mikan_base_url),
+            })),
+        )
+            .into_response(),
+        Err(ConfigStoreError::RevisionConflict) => api_error(
+            StatusCode::CONFLICT,
+            "configuration changed; reload and retry",
+        ),
+        Err(ConfigStoreError::InvalidShape | ConfigStoreError::InvalidConfig(_)) => {
+            api_error(StatusCode::BAD_REQUEST, "configuration update is invalid")
+        }
+        Err(_) => api_error(StatusCode::INTERNAL_SERVER_ERROR, "could not save settings"),
+    }
+}
+
+fn validate_settings_request(request: &UiSettingsUpdateRequest) -> Option<String> {
+    let max_lengths = [
+        (request.openlist_url.as_deref(), 1000),
+        (request.llm_provider_type.as_deref(), 50),
+        (request.llm_api_key.as_deref(), 500),
+        (request.llm_base_url.as_deref(), 1000),
+        (request.llm_model.as_deref(), 200),
+        (request.tmdb_language.as_deref(), 30),
+        (request.metadata_parser_provider.as_deref(), 50),
+        (request.download_path.as_deref(), 1000),
+        (request.rename_format.as_deref(), 1000),
+        (request.mikan_base_url.as_deref(), 1000),
+    ];
+    if request.global_exclude_patterns.chars().count() > 4000
+        || max_lengths
+            .iter()
+            .any(|(value, limit)| value.is_some_and(|value| value.chars().count() > *limit))
+    {
+        return Some("setting value exceeds its maximum length".to_string());
+    }
+    if request
+        .poll_interval_seconds
+        .is_some_and(|value| !(60..=86_400).contains(&value))
+    {
+        return Some("RSS 轮询间隔必须在 60–86400 秒之间".to_string());
+    }
+    if request
+        .max_download_retries
+        .is_some_and(|value| !(0..=100).contains(&value))
+    {
+        return Some("最大下载重试次数必须在 0–100 之间".to_string());
+    }
+    None
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalize_ui_http_url(value: &str, label: &str) -> Result<String, String> {
+    let normalized = value.trim();
+    let parsed =
+        reqwest::Url::parse(normalized).map_err(|_| format!("{label}必须是完整的 http(s) 地址"))?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return Err(format!("{label}必须是完整的 http(s) 地址"));
+    }
+    Ok(format!("{}/", normalized.trim_end_matches('/')))
+}
+
+fn split_exclude_patterns(value: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let (mut parentheses, mut brackets, mut braces) = (0usize, 0usize, 0usize);
+    let mut escaped = false;
+    for (index, character) in value.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        match character {
+            '(' => parentheses += 1,
+            ')' => parentheses = parentheses.saturating_sub(1),
+            '[' => brackets += 1,
+            ']' => brackets = brackets.saturating_sub(1),
+            '{' => braces += 1,
+            '}' => braces = braces.saturating_sub(1),
+            '|' if parentheses == 0 && brackets == 0 && braces == 0 => {
+                parts.push(value[start..index].trim().to_string());
+                start = index + character.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(value[start..].trim().to_string());
+    let mut seen = std::collections::HashSet::new();
+    parts.retain(|part| !part.is_empty() && seen.insert(part.clone()));
+    parts
 }
 
 async fn ui_state(State(state): State<AppState>) -> Response {

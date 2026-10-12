@@ -42,6 +42,31 @@ pub struct UiLlmSettings {
     pub metadata_parser_provider: String,
 }
 
+pub struct OpenListValidationContext {
+    pub revision: String,
+    pub base_url: String,
+    pub download_path: String,
+    pub token: String,
+    pub offline_download_tool: String,
+}
+
+#[derive(Default)]
+pub struct UiSettingsUpdate {
+    pub global_exclude_patterns: Vec<String>,
+    pub openlist_url: Option<String>,
+    pub download_path: Option<String>,
+    pub rename_format: Option<String>,
+    pub poll_interval_seconds: Option<i64>,
+    pub max_download_retries: Option<i64>,
+    pub mikan_base_url: Option<String>,
+    pub llm_provider_type: Option<String>,
+    pub llm_api_key: Option<String>,
+    pub llm_base_url: Option<String>,
+    pub llm_model: Option<String>,
+    pub tmdb_language: Option<String>,
+    pub metadata_parser_provider: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum ConfigStoreError {
     #[error("configuration file operation failed")]
@@ -52,6 +77,8 @@ pub enum ConfigStoreError {
     RevisionConflict,
     #[error("configuration was replaced, but directory durability is uncertain")]
     DurabilityUncertain(#[source] std::io::Error),
+    #[error("configuration section has an unexpected shape")]
+    InvalidShape,
 }
 
 pub struct ConfigDocumentStore {
@@ -188,10 +215,103 @@ impl ConfigDocumentStore {
         Ok(legacy_urls)
     }
 
+    pub fn openlist_validation_context(
+        &self,
+    ) -> Result<OpenListValidationContext, ConfigStoreError> {
+        let source = fs::read_to_string(&self.path)?;
+        let document = source.parse::<DocumentMut>().map_err(ConfigError::from)?;
+        let value = |key: &str, default: &str| {
+            document
+                .get("openlist")
+                .and_then(toml_edit::Item::as_table)
+                .and_then(|table| table.get(key))
+                .and_then(toml_edit::Item::as_str)
+                .unwrap_or(default)
+                .to_string()
+        };
+        Ok(OpenListValidationContext {
+            revision: revision(source.as_bytes()),
+            base_url: value("url", "http://localhost:5244"),
+            download_path: value("download_path", "/"),
+            token: value("token", ""),
+            offline_download_tool: value("offline_download_tool", "qBittorrent"),
+        })
+    }
+
+    pub fn update_ui_settings(
+        &self,
+        expected_revision: &str,
+        settings: UiSettingsUpdate,
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        self.update_checked(expected_revision, |document| {
+            let root = document.as_table_mut();
+            if let Some(value) = settings.openlist_url {
+                get_or_insert_table(root, "openlist")?.insert("url", toml_edit::value(value));
+            }
+            if let Some(value) = settings.download_path {
+                get_or_insert_table(root, "openlist")?
+                    .insert("download_path", toml_edit::value(value));
+            }
+            if let Some(value) = settings.rename_format {
+                get_or_insert_table(root, "openlist")?
+                    .insert("rename_format", toml_edit::value(value));
+            }
+            if let Some(value) = settings.poll_interval_seconds {
+                get_or_insert_table(root, "rss")?.insert("interval_time", toml_edit::value(value));
+            }
+            if let Some(value) = settings.max_download_retries {
+                get_or_insert_table(root, "rss")?
+                    .insert("max_download_retries", toml_edit::value(value));
+            }
+            if let Some(value) = settings.mikan_base_url {
+                get_or_insert_table(root, "mikan")?.insert("base_url", toml_edit::value(value));
+            }
+            if let Some(value) = settings.llm_provider_type {
+                get_or_insert_table(root, "llm")?.insert("provider_type", toml_edit::value(value));
+            }
+            if let Some(value) = settings.llm_api_key {
+                get_or_insert_table(root, "llm")?.insert("openai_api_key", toml_edit::value(value));
+            }
+            if let Some(value) = settings.llm_base_url {
+                get_or_insert_table(root, "llm")?
+                    .insert("openai_base_url", toml_edit::value(value));
+            }
+            if let Some(value) = settings.llm_model {
+                get_or_insert_table(root, "llm")?.insert("openai_model", toml_edit::value(value));
+            }
+            if let Some(value) = settings.tmdb_language {
+                get_or_insert_table(root, "llm")?.insert("tmdb_language", toml_edit::value(value));
+            }
+            if let Some(value) = settings.metadata_parser_provider {
+                get_or_insert_table(root, "metadata_parser")?
+                    .insert("provider", toml_edit::value(value));
+            }
+            let rss = get_or_insert_table(root, "rss")?;
+            let filter = get_or_insert_table(rss, "filter")?;
+            let mut patterns = toml_edit::Array::new();
+            for pattern in settings.global_exclude_patterns {
+                patterns.push(pattern);
+            }
+            filter.insert("exclude_patterns", toml_edit::value(patterns));
+            Ok(())
+        })
+    }
+
     pub fn update(
         &self,
         expected_revision: &str,
         edit: impl FnOnce(&mut DocumentMut),
+    ) -> Result<ConfigSnapshot, ConfigStoreError> {
+        self.update_checked(expected_revision, |document| {
+            edit(document);
+            Ok(())
+        })
+    }
+
+    fn update_checked(
+        &self,
+        expected_revision: &str,
+        edit: impl FnOnce(&mut DocumentMut) -> Result<(), ConfigStoreError>,
     ) -> Result<ConfigSnapshot, ConfigStoreError> {
         let _lock = self.lock()?;
         let source = fs::read_to_string(&self.path)?;
@@ -201,7 +321,7 @@ impl ConfigDocumentStore {
 
         let mut document = source.parse::<DocumentMut>().map_err(ConfigError::from)?;
         let original = document.clone();
-        edit(&mut document);
+        edit(&mut document)?;
         preserve_value_decor(&original, &mut document);
         let updated = document.to_string();
         let validated = updated.parse::<DocumentMut>().map_err(ConfigError::from)?;
@@ -228,6 +348,16 @@ impl ConfigDocumentStore {
         file.lock_exclusive()?;
         Ok(file)
     }
+}
+
+fn get_or_insert_table<'a>(
+    parent: &'a mut Table,
+    key: &str,
+) -> Result<&'a mut Table, ConfigStoreError> {
+    let entry = parent
+        .entry(key)
+        .or_insert(toml_edit::Item::Table(Table::new()));
+    entry.as_table_mut().ok_or(ConfigStoreError::InvalidShape)
 }
 
 fn preserve_value_decor(original: &DocumentMut, updated: &mut DocumentMut) {

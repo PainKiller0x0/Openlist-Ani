@@ -5,6 +5,7 @@ pub mod config;
 pub mod config_store;
 pub mod http;
 pub mod naming;
+pub mod openlist;
 pub mod storage;
 
 pub use auth::AuthSettings;
